@@ -130,12 +130,21 @@ const App: React.FC = () => {
   };
 
   const addImageToLibrary = async (imageUrl: string, name: string = 'Generated Image', imageType?: ImageMetadata['imageType']) => {
+      console.log('App: addImageToLibrary called', { name, imageType, urlLength: imageUrl.length });
+
       if (!galleryImages.some(img => img.url === imageUrl)) {
           try {
+              console.log('App: Calling storage service...');
               // Store the image using the storage service (S3 if configured, otherwise data URL)
               const storageResult = await storageService.storeImage(imageUrl, {
                   imageType: imageType || 'generated',
                   customName: name.toLowerCase().replace(/\s+/g, '-'),
+              });
+
+              console.log('App: Storage result received', {
+                  isS3: storageResult.isS3,
+                  hasError: !!storageResult.error,
+                  urlType: storageResult.url.startsWith('data:') ? 'data URL' : 'S3 URL'
               });
 
               const newImage: GalleryImage = {
@@ -147,7 +156,10 @@ const App: React.FC = () => {
                   createdAt: Date.now()
               };
 
-              setGalleryImages(prev => [newImage, ...prev]);
+              setGalleryImages(prev => {
+                  console.log('App: Adding image to gallery. New total will be:', prev.length + 1);
+                  return [newImage, ...prev];
+              });
 
               // Show notification about storage method
               if (storageResult.isS3) {
@@ -167,9 +179,14 @@ const App: React.FC = () => {
                   isFavorite: false,
                   createdAt: Date.now()
               };
-              setGalleryImages(prev => [newImage, ...prev]);
+              setGalleryImages(prev => {
+                  console.log('App: Adding image to gallery (fallback). New total will be:', prev.length + 1);
+                  return [newImage, ...prev];
+              });
               addNotification(`${name} saved locally`, 'success');
           }
+      } else {
+          console.log('App: Image already exists in gallery, skipping');
       }
   };
 

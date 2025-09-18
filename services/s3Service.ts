@@ -159,6 +159,7 @@ const createS3Service = (): S3Service | null => {
     return null;
   }
 
+  console.log('S3 service initialized with bucket:', config.bucketName);
   return new S3Service(config);
 };
 

@@ -21,14 +21,21 @@ class StorageService {
    * @returns Promise<StorageResult> - Storage result with URL and method used
    */
   async storeImage(dataUrl: string, metadata: ImageMetadata = {}): Promise<StorageResult> {
+    console.log('StorageService: Attempting to store image', {
+      s3Available: !!s3Service,
+      imageType: metadata.imageType
+    });
+
     // If S3 is configured, try to upload there
     if (s3Service) {
       try {
         const folder = this.generateFolder(metadata);
         const filename = this.generateFilename(metadata);
 
+        console.log('StorageService: Uploading to S3', { folder, filename });
         const s3Url = await s3Service.uploadImage(dataUrl, folder, filename);
 
+        console.log('StorageService: S3 upload successful', s3Url);
         return {
           url: s3Url,
           isS3: true,
@@ -45,6 +52,7 @@ class StorageService {
     }
 
     // Fallback to data URL storage (in-memory)
+    console.log('StorageService: Using data URL storage (S3 not configured)');
     return {
       url: dataUrl,
       isS3: false,
