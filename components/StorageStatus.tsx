@@ -1,23 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
+import { localStorageService } from '../services/localStorageService';
 
-const StorageStatus: React.FC = () => {
+interface StorageStatusProps {
+  galleryImageCount?: number;
+}
+
+const StorageStatus: React.FC<StorageStatusProps> = ({ galleryImageCount = 0 }) => {
   const [status, setStatus] = useState<any>(null);
+  const [localStorageInfo, setLocalStorageInfo] = useState<any>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     const storageStatus = storageService.getStorageStatus();
+    const localInfo = localStorageService.getStorageInfo();
+    const metadata = localStorageService.getGalleryMetadata();
+
     setStatus(storageStatus);
+    setLocalStorageInfo({
+      ...localInfo,
+      metadata,
+      imagesCount: galleryImageCount
+    });
 
-    // Only show the status if S3 is not configured (to help with setup)
-    if (!storageStatus.s3Available) {
+    // Show status for 15 seconds on first load, or if there are storage issues
+    if (!storageStatus.s3Available || localInfo.percentage > 80) {
       setIsVisible(true);
-
-      // Auto-hide after 10 seconds
-      const timer = setTimeout(() => setIsVisible(false), 10000);
+      const timer = setTimeout(() => setIsVisible(false), 15000);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [galleryImageCount]);
 
   const testS3Upload = async () => {
     try {
@@ -36,40 +49,130 @@ const StorageStatus: React.FC = () => {
           customName: 'test-image'
         });
 
-        alert(`Test upload ${result.isS3 ? 'succeeded' : 'used fallback'}: ${result.url.substring(0, 50)}...`);
+        const message = result.isS3
+          ? `✅ S3 upload successful!`
+          : `⚠️ S3 failed (${result.errorType}), used local storage`;
+
+        alert(message);
       }
     } catch (error) {
       alert(`Test upload failed: ${error}`);
     }
   };
 
-  if (!isVisible || !status) return null;
+  const clearLocalStorage = () => {
+    if (confirm('Clear all locally stored images? This cannot be undone.')) {
+      localStorageService.clearGalleryData();
+      alert('Local storage cleared!');
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  if (!isVisible || !status || !localStorageInfo) return null;
+
+  const isStorageWarning = localStorageInfo.percentage > 80;
 
   return (
-    <div className="fixed bottom-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-sm shadow-lg z-50">
+    <div className={`fixed bottom-4 right-4 rounded-lg p-4 max-w-sm shadow-lg z-50 transition-all duration-300 ${
+      isStorageWarning
+        ? 'bg-red-50 border border-red-200'
+        : 'bg-blue-50 border border-blue-200'
+    }`}>
       <div className="flex justify-between items-start">
-        <div>
-          <h3 className="text-sm font-semibold text-yellow-800 mb-1">
-            Storage Configuration
-          </h3>
-          <p className="text-xs text-yellow-700 mb-2">
-            {status.storageType}
-          </p>
-          {!status.s3Available && (
-            <p className="text-xs text-yellow-600 mb-3">
-              Images will be stored locally. Configure AWS S3 for cloud storage.
-            </p>
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className={`text-sm font-semibold ${
+              isStorageWarning ? 'text-red-800' : 'text-blue-800'
+            }`}>
+              Storage Status
+            </h3>
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className={`text-xs px-2 py-1 rounded ${
+                isStorageWarning
+                  ? 'bg-red-200 hover:bg-red-300 text-red-800'
+                  : 'bg-blue-200 hover:bg-blue-300 text-blue-800'
+              }`}
+            >
+              {isExpanded ? 'Less' : 'More'}
+            </button>
+          </div>
+
+          <div className={`text-xs ${isStorageWarning ? 'text-red-700' : 'text-blue-700'} mb-2`}>
+            <div className="flex justify-between">
+              <span>Images:</span>
+              <span>{localStorageInfo.imagesCount} stored</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Local Storage:</span>
+              <span>{formatBytes(localStorageInfo.used)} ({localStorageInfo.percentage.toFixed(1)}%)</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Cloud Storage:</span>
+              <span>{status.s3Available ? 'Available' : 'Unavailable'}</span>
+            </div>
+          </div>
+
+          {/* Storage usage bar */}
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+            <div
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                localStorageInfo.percentage > 90 ? 'bg-red-500' :
+                localStorageInfo.percentage > 80 ? 'bg-yellow-500' :
+                'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(localStorageInfo.percentage, 100)}%` }}
+            />
+          </div>
+
+          {isExpanded && (
+            <div className="space-y-2 mb-3">
+              {isStorageWarning && (
+                <div className="text-xs text-red-600 bg-red-100 p-2 rounded">
+                  ⚠️ Storage almost full. Consider clearing old images.
+                </div>
+              )}
+
+              {!status.s3Available && (
+                <div className="text-xs text-yellow-600 bg-yellow-100 p-2 rounded">
+                  💡 Configure AWS S3 for unlimited cloud storage.
+                </div>
+              )}
+
+              <div className="flex space-x-2">
+                <button
+                  onClick={testS3Upload}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${
+                    status.s3Available
+                      ? 'bg-green-200 hover:bg-green-300 text-green-800'
+                      : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+                  }`}
+                >
+                  Test Storage
+                </button>
+                <button
+                  onClick={clearLocalStorage}
+                  className="text-xs bg-red-200 hover:bg-red-300 px-3 py-1 rounded text-red-800"
+                >
+                  Clear Local
+                </button>
+              </div>
+            </div>
           )}
-          <button
-            onClick={testS3Upload}
-            className="text-xs bg-yellow-200 hover:bg-yellow-300 px-2 py-1 rounded text-yellow-800"
-          >
-            Test Storage
-          </button>
         </div>
+
         <button
           onClick={() => setIsVisible(false)}
-          className="text-yellow-600 hover:text-yellow-800 text-lg leading-none"
+          className={`ml-2 hover:opacity-75 text-lg leading-none ${
+            isStorageWarning ? 'text-red-600' : 'text-blue-600'
+          }`}
         >
           ×
         </button>

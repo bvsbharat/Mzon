@@ -4,6 +4,8 @@ export interface StorageResult {
   url: string;
   isS3: boolean;
   error?: string;
+  errorType?: 'permission' | 'network' | 'configuration' | 'unknown';
+  retryable?: boolean;
 }
 
 export interface ImageMetadata {
@@ -43,10 +45,28 @@ class StorageService {
       } catch (error) {
         console.warn('S3 upload failed, falling back to data URL:', error);
 
+        // Analyze the error to provide better feedback
+        const errorMessage = error instanceof Error ? error.message : 'S3 upload failed';
+        let errorType: StorageResult['errorType'] = 'unknown';
+        let retryable = false;
+
+        if (errorMessage.includes('AccessDenied') || errorMessage.includes('not authorized')) {
+          errorType = 'permission';
+          retryable = false;
+        } else if (errorMessage.includes('NetworkingError') || errorMessage.includes('timeout')) {
+          errorType = 'network';
+          retryable = true;
+        } else if (errorMessage.includes('NoSuchBucket') || errorMessage.includes('InvalidBucketName')) {
+          errorType = 'configuration';
+          retryable = false;
+        }
+
         return {
           url: dataUrl,
           isS3: false,
-          error: error instanceof Error ? error.message : 'S3 upload failed',
+          error: errorMessage,
+          errorType,
+          retryable,
         };
       }
     }

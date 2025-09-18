@@ -21,6 +21,7 @@ import WelcomeModal from './components/WelcomeModal';
 import CompletionModal from './components/CompletionModal';
 import StorageStatus from './components/StorageStatus';
 import { storageService, ImageMetadata } from './services/storageService';
+import { localStorageService } from './services/localStorageService';
 
 const VIEW_TITLES: Record<View, string> = {
   photo: 'Photo Studio',
@@ -72,6 +73,13 @@ const App: React.FC = () => {
     }
   });
 
+  // Save gallery images to localStorage whenever galleryImages changes
+  React.useEffect(() => {
+    if (galleryImages.length > 0 && localStorageService.isAvailable()) {
+      localStorageService.saveGalleryImages(galleryImages);
+    }
+  }, [galleryImages]);
+
   // Check for onboarding completion on initial mount
   /*
   React.useEffect(() => {
@@ -101,6 +109,20 @@ const App: React.FC = () => {
   const removeNotification = (id: string) => {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
+
+  // Load gallery images from localStorage on app initialization
+  React.useEffect(() => {
+    if (localStorageService.isAvailable()) {
+      const savedImages = localStorageService.loadGalleryImages();
+      if (savedImages.length > 0) {
+        setGalleryImages(savedImages);
+        addNotification(`Loaded ${savedImages.length} images from storage`, 'success');
+      }
+    } else {
+      console.warn('localStorage is not available, images will not persist');
+      addNotification('Storage not available - images will be temporary', 'error');
+    }
+  }, []);
 
   const handleNavigate = (view: View) => {
     setActiveView(view);
@@ -161,11 +183,28 @@ const App: React.FC = () => {
                   return [newImage, ...prev];
               });
 
-              // Show notification about storage method
+              // Show notification about storage method with detailed feedback
               if (storageResult.isS3) {
                   addNotification(`${name} saved to cloud storage`, 'success');
               } else if (storageResult.error) {
-                  addNotification(`${name} saved locally (cloud storage unavailable)`, 'success');
+                  // Provide specific feedback based on error type
+                  let message = `${name} saved locally`;
+
+                  switch (storageResult.errorType) {
+                      case 'permission':
+                          message += ' (cloud storage: permission denied)';
+                          break;
+                      case 'network':
+                          message += ' (cloud storage: network error)';
+                          break;
+                      case 'configuration':
+                          message += ' (cloud storage: configuration error)';
+                          break;
+                      default:
+                          message += ' (cloud storage unavailable)';
+                  }
+
+                  addNotification(message, 'success');
               }
           } catch (error) {
               console.error('Failed to store image:', error);
@@ -509,7 +548,7 @@ const App: React.FC = () => {
         </div>
 
         <NotificationHost notifications={notifications} onRemoveNotification={removeNotification} />
-        <StorageStatus />
+        <StorageStatus galleryImageCount={galleryImages.length} />
 
         {/* {onboardingActive && onboardingStep === 0 && (
           <WelcomeModal onStart={handleStartOnboarding} onSkip={handleSkipOnboarding} />
