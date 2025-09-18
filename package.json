@@ -10,12 +10,16 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.891.0",
+    "@aws-sdk/lib-storage": "^3.891.0",
     "@aws-sdk/s3-request-presigner": "^3.891.0",
     "@google/genai": "^1.15.0",
+    "@paper-design/shaders-react": "^0.0.53",
     "@stytch/react": "^19.11.1",
     "@stytch/vanilla-js": "^5.35.1",
+    "framer-motion": "^12.23.15",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

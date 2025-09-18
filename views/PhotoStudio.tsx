@@ -21,7 +21,7 @@ interface PhotoStudioProps {
   onNextOnboardingStep: () => void;
   onCompleteOnboarding: () => void;
   onSkipOnboarding: () => void;
-  addImageToLibrary: (imageUrl: string, name?: string) => void;
+  addImageToLibrary: (imageUrl: string, name?: string, imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited') => void;
   addNotification: (message: string) => void;
 }
 
@@ -133,7 +133,7 @@ const PhotoStudio: React.FC<PhotoStudioProps> = ({
     if (activeStudioImage) {
       // The `setMasterImage` function already adds the image to the library.
       // This action provides explicit user feedback that it's been saved.
-      addImageToLibrary(activeStudioImage, 'Master Shot');
+      addImageToLibrary(activeStudioImage, 'Master Shot', 'uploaded');
       addNotification('Master shot saved to library!');
     }
   };

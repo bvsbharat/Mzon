@@ -23,7 +23,7 @@ interface ImageComposerProps {
   setComposerGenContext: (context: ComposerGenContext) => void;
   onNavigate: (view: View) => void;
   setMasterImage: (url: string | null) => void;
-  addImageToLibrary: (url: string) => void;
+  addImageToLibrary: (url: string, name?: string, imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited') => void;
   credits: number;
   setCredits: Dispatch<SetStateAction<number>>;
   addNotification: (message: string) => void;
@@ -211,7 +211,7 @@ const ImageComposer: React.FC<ImageComposerProps> = ({
 
   const handleSaveToLibrary = () => {
     if (composedImageUrl) {
-      addImageToLibrary(composedImageUrl);
+      addImageToLibrary(composedImageUrl, 'Composed Image', 'composed');
       addNotification('Image saved to library!');
     }
   };

@@ -195,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, credits, i
                             />
                              <NavItem
                                 icon={<Icon icon="crop" className="w-5 h-5" />}
-                                label="Platform Studio"
+                                label="🤖 Platform Studio + News AI"
                                 isActive={activeView === 'platform'}
                                 onClick={() => setActiveView('platform')}
                                 isCollapsed={isCollapsed}

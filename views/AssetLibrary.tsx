@@ -6,6 +6,7 @@ import { View } from '../types';
 import { GalleryImage } from '../types';
 import Icon from '../components/Icon';
 import ImagePreviewModal from '../components/ImagePreviewModal';
+import { storageService } from '../services/storageService';
 
 interface AssetLibraryProps {
   masterImageId: string | null;
@@ -14,6 +15,7 @@ interface AssetLibraryProps {
   onUpdateImage: (imageId: string, updates: Partial<Omit<GalleryImage, 'id' | 'url' | 'createdAt'>>) => void;
   onDeleteImage: (imageId: string) => void;
   onSetAsMaster: (image: GalleryImage) => void;
+  onSyncWithS3?: () => Promise<void>;
 }
 
 interface EditModalProps {
@@ -191,14 +193,28 @@ const ActionButton: React.FC<{ onClick: (e: React.MouseEvent) => void, 'aria-lab
 );
 
 
-const AssetLibrary: React.FC<AssetLibraryProps> = ({ masterImageId, galleryImages, onNavigate, onUpdateImage, onDeleteImage, onSetAsMaster }) => {
-    
+const AssetLibrary: React.FC<AssetLibraryProps> = ({ masterImageId, galleryImages, onNavigate, onUpdateImage, onDeleteImage, onSetAsMaster, onSyncWithS3 }) => {
+
     const [searchQuery, setSearchQuery] = useState('');
     const [filter, setFilter] = useState<'all' | 'favorites'>('all');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
     const [editingImage, setEditingImage] = useState<GalleryImage | null>(null);
     const [imageToDelete, setImageToDelete] = useState<GalleryImage | null>(null);
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSyncWithS3 = async () => {
+        if (!onSyncWithS3) return;
+
+        setIsSyncing(true);
+        try {
+            await onSyncWithS3();
+        } catch (error) {
+            console.error('Failed to sync with S3:', error);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const filteredAndSortedImages = useMemo(() => {
         let images = galleryImages
@@ -224,15 +240,59 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ masterImageId, galleryImage
         return images;
     }, [galleryImages, searchQuery, filter, sortBy]);
 
+    // Debug storage status
+    const debugStorageStatus = () => {
+        const status = storageService.getStorageStatus();
+        console.log('Storage Status:', status);
+        return status;
+    };
+
+    const [showDebug, setShowDebug] = useState(false);
+    const storageStatus = debugStorageStatus();
+
     if (galleryImages.length === 0) {
         return (
           <div className="w-full h-full flex items-center justify-center text-center animate-fade-in-up p-4 sm:p-6 lg:p-8">
-            <div className="bg-white p-8 rounded-lg border">
+            <div className="bg-white p-8 rounded-lg border max-w-md">
               <div className="w-12 h-12 mx-auto rounded-lg bg-slate-100 flex items-center justify-center">
                 <Icon icon="photo" className="w-6 h-6 text-gray-500" />
               </div>
               <h1 className="mt-4 text-xl font-bold tracking-tight text-gray-900">Your Library is Empty</h1>
               <p className="mt-2 text-base text-gray-600">Generate a master image in the Photo Studio to get started.</p>
+
+              {/* Storage Status */}
+              <div className="mt-4 p-3 bg-slate-50 rounded-lg text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Storage Status</span>
+                  <button
+                    onClick={() => setShowDebug(!showDebug)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showDebug ? 'Hide' : 'Show'} Details
+                  </button>
+                </div>
+                <div className="flex items-center mt-1">
+                  <div className={`w-2 h-2 rounded-full mr-2 ${storageStatus.s3Available ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+                  <span className="text-sm text-gray-600">{storageStatus.storageType}</span>
+                </div>
+
+                {showDebug && (
+                  <div className="mt-3 p-2 bg-white rounded border text-xs">
+                    <div>S3 Available: {storageStatus.s3Available ? '✓' : '✗'}</div>
+                    <div>Fallback: {storageStatus.fallbackEnabled ? '✓' : '✗'}</div>
+                    {onSyncWithS3 && (
+                      <button
+                        onClick={handleSyncWithS3}
+                        disabled={isSyncing}
+                        className="mt-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs hover:bg-blue-200 disabled:opacity-50"
+                      >
+                        {isSyncing ? 'Syncing...' : 'Test S3 Sync'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <button onClick={() => onNavigate('photo')} className="mt-6 inline-flex items-center justify-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-900">
                 Go to Photo Studio
               </button>
@@ -256,6 +316,17 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ masterImageId, galleryImage
                         <input type="search" placeholder="Search by name or tag..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
                     </div>
                     <div className="flex items-center gap-4">
+                        {onSyncWithS3 && (
+                            <button
+                                onClick={handleSyncWithS3}
+                                disabled={isSyncing}
+                                className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Sync with cloud storage"
+                            >
+                                <Icon icon={isSyncing ? "refreshCw" : "uploadCloud"} className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                                {isSyncing ? 'Syncing...' : 'Sync S3'}
+                            </button>
+                        )}
                         <div className="flex items-center bg-slate-100 p-1 rounded-md">
                             <button onClick={() => setFilter('all')} className={`px-3 py-1 text-sm font-medium rounded ${filter === 'all' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-600'}`}>All</button>
                             <button onClick={() => setFilter('favorites')} className={`px-3 py-1 text-sm font-medium rounded ${filter === 'favorites' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-600'}`}>Favorites</button>

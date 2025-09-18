@@ -1,4 +1,5 @@
 import { s3Service } from './s3Service';
+import { GalleryImage } from '../types';
 
 export interface StorageResult {
   url: string;
@@ -189,6 +190,110 @@ class StorageService {
       fallbackEnabled: true,
       storageType: s3Service ? 'S3 with fallback' : 'Data URLs only',
     };
+  }
+
+  /**
+   * Load gallery images from S3 with fallback to localStorage
+   * @returns Promise<GalleryImage[]> - Gallery images
+   */
+  async loadGalleryImages(): Promise<GalleryImage[]> {
+    console.log('StorageService: Loading gallery images...');
+    console.log('StorageService: S3 service available:', !!s3Service);
+
+    // Try S3 first if available
+    if (s3Service) {
+      try {
+        console.log('StorageService: Loading from S3...');
+        const s3Images = await s3Service.loadGalleryMetadata();
+
+        if (s3Images.length > 0) {
+          console.log(`StorageService: Successfully loaded ${s3Images.length} images from S3`);
+          return s3Images;
+        }
+
+        // If no images in S3 metadata, try to sync with actual S3 contents
+        console.log('StorageService: No S3 metadata found, syncing with S3 bucket contents...');
+        const syncedImages = await s3Service.syncGalleryWithS3([]);
+
+        if (syncedImages.length > 0) {
+          console.log(`StorageService: Found and synced ${syncedImages.length} images from S3 bucket`);
+          return syncedImages;
+        }
+
+        console.log('StorageService: No images found in S3 bucket');
+      } catch (error) {
+        console.warn('StorageService: S3 gallery loading failed, falling back to localStorage:', error);
+      }
+    } else {
+      console.log('StorageService: S3 service not available - checking environment variables...');
+      console.log('StorageService: Environment check:', {
+        hasRegion: !!import.meta.env.VITE_AWS_REGION,
+        hasAccessKey: !!import.meta.env.VITE_AWS_ACCESS_KEY_ID,
+        hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+        hasBucket: !!import.meta.env.VITE_AWS_S3_BUCKET
+      });
+    }
+
+    // Fallback to localStorage
+    console.log('StorageService: Loading from localStorage...');
+    try {
+      const { localStorageService } = await import('./localStorageService');
+      const localImages = localStorageService.loadGalleryImages();
+      console.log(`StorageService: Loaded ${localImages.length} images from localStorage`);
+      return localImages;
+    } catch (error) {
+      console.error('StorageService: Failed to load from localStorage:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Save gallery metadata to both S3 and localStorage
+   * @param galleryImages - Gallery images to save
+   */
+  async saveGalleryMetadata(galleryImages: GalleryImage[]): Promise<void> {
+    console.log('StorageService: Saving gallery metadata...', { count: galleryImages.length });
+
+    // Save to S3 if available
+    if (s3Service) {
+      try {
+        await s3Service.saveGalleryMetadata(galleryImages);
+        console.log('StorageService: Gallery metadata saved to S3');
+      } catch (error) {
+        console.warn('StorageService: Failed to save gallery metadata to S3:', error);
+      }
+    }
+
+    // Always save to localStorage as backup
+    try {
+      const { localStorageService } = await import('./localStorageService');
+      localStorageService.saveGalleryImages(galleryImages);
+      console.log('StorageService: Gallery metadata saved to localStorage');
+    } catch (error) {
+      console.warn('StorageService: Failed to save gallery metadata to localStorage:', error);
+    }
+  }
+
+  /**
+   * Sync gallery with S3 - ensures S3 metadata is up to date
+   * @param currentGalleryImages - Current gallery state
+   * @returns Promise<GalleryImage[]> - Synced gallery images
+   */
+  async syncGalleryWithS3(currentGalleryImages: GalleryImage[]): Promise<GalleryImage[]> {
+    if (!s3Service) {
+      console.log('StorageService: S3 not available for sync');
+      return currentGalleryImages;
+    }
+
+    try {
+      console.log('StorageService: Syncing gallery with S3...');
+      const syncedImages = await s3Service.syncGalleryWithS3(currentGalleryImages);
+      console.log(`StorageService: Gallery sync completed - ${syncedImages.length} images`);
+      return syncedImages;
+    } catch (error) {
+      console.error('StorageService: Gallery sync failed:', error);
+      return currentGalleryImages;
+    }
   }
 }
 

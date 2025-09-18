@@ -73,10 +73,18 @@ const App: React.FC = () => {
     }
   });
 
-  // Save gallery images to localStorage whenever galleryImages changes
+  // Save gallery images to both S3 and localStorage whenever galleryImages changes
   React.useEffect(() => {
-    if (galleryImages.length > 0 && localStorageService.isAvailable()) {
-      localStorageService.saveGalleryImages(galleryImages);
+    if (galleryImages.length > 0) {
+      const saveGalleryMetadata = async () => {
+        try {
+          await storageService.saveGalleryMetadata(galleryImages);
+        } catch (error) {
+          console.error('App: Failed to save gallery metadata:', error);
+        }
+      };
+
+      saveGalleryMetadata();
     }
   }, [galleryImages]);
 
@@ -106,22 +114,70 @@ const App: React.FC = () => {
     setNotifications(prev => [...prev, { id, message, type }]);
   };
 
+  const syncGalleryWithS3 = async () => {
+    try {
+      console.log('App: Manual gallery sync requested');
+      const syncedImages = await storageService.syncGalleryWithS3(galleryImages);
+
+      if (syncedImages.length > 0) {
+        setGalleryImages(syncedImages);
+        addNotification(`Gallery synced: ${syncedImages.length} images`, 'success');
+      } else {
+        addNotification('Gallery sync completed - no changes', 'success');
+      }
+    } catch (error) {
+      console.error('App: Manual gallery sync failed:', error);
+      addNotification('Gallery sync failed', 'error');
+    }
+  };
+
   const removeNotification = (id: string) => {
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // Load gallery images from localStorage on app initialization
+  // Load gallery images from S3 first, then localStorage on app initialization
   React.useEffect(() => {
-    if (localStorageService.isAvailable()) {
-      const savedImages = localStorageService.loadGalleryImages();
-      if (savedImages.length > 0) {
-        setGalleryImages(savedImages);
-        addNotification(`Loaded ${savedImages.length} images from storage`, 'success');
+    const loadGalleryImages = async () => {
+      try {
+        console.log('App: Loading gallery images...');
+
+        // Try to load from S3 via storage service
+        const loadedImages = await storageService.loadGalleryImages();
+
+        if (loadedImages.length > 0) {
+          console.log(`App: Loaded ${loadedImages.length} images via storageService`);
+          setGalleryImages(loadedImages);
+          addNotification(`Loaded ${loadedImages.length} images from cloud storage`, 'success');
+          return;
+        }
+
+        // Fallback to localStorage if no S3 images found
+        if (localStorageService.isAvailable()) {
+          const localImages = localStorageService.loadGalleryImages();
+          if (localImages.length > 0) {
+            console.log(`App: Loaded ${localImages.length} images from localStorage`);
+            setGalleryImages(localImages);
+            addNotification(`Loaded ${localImages.length} images from local storage`, 'success');
+
+            // Try to migrate localStorage images to S3
+            try {
+              await storageService.saveGalleryMetadata(localImages);
+              console.log('App: Migrated localStorage images to S3');
+            } catch (error) {
+              console.warn('App: Failed to migrate to S3:', error);
+            }
+          }
+        } else {
+          console.warn('localStorage is not available, images will not persist');
+          addNotification('Storage not available - images will be temporary', 'error');
+        }
+      } catch (error) {
+        console.error('App: Failed to load gallery images:', error);
+        addNotification('Failed to load images from storage', 'error');
       }
-    } else {
-      console.warn('localStorage is not available, images will not persist');
-      addNotification('Storage not available - images will be temporary', 'error');
-    }
+    };
+
+    loadGalleryImages();
   }, []);
 
   const handleNavigate = (view: View) => {
@@ -247,7 +303,15 @@ const App: React.FC = () => {
           // Continue with local deletion even if cloud deletion fails
       }
 
-      setGalleryImages(prev => prev.filter(img => img.id !== imageId));
+      const updatedImages = galleryImages.filter(img => img.id !== imageId);
+      setGalleryImages(updatedImages);
+
+      // Update S3 metadata after deletion
+      try {
+          await storageService.saveGalleryMetadata(updatedImages);
+      } catch (error) {
+          console.warn('Failed to update S3 metadata after deletion:', error);
+      }
 
       if(deletedImage.url === activeStudioImage) {
           setActiveStudioImage(null);
@@ -448,6 +512,7 @@ const App: React.FC = () => {
                   onUpdateImage={updateGalleryImage}
                   onDeleteImage={deleteGalleryImage}
                   onSetAsMaster={handleSetMasterFromLibrary}
+                  onSyncWithS3={syncGalleryWithS3}
                 />;
       case 'imageGenerator':
           return <ImageGenerator

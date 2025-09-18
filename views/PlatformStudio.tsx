@@ -2,12 +2,13 @@
 import React, { useState, useCallback, useRef } from 'react';
 // FIX: Updated import to use types.ts to prevent circular dependencies.
 import { View, GalleryImage } from '../types';
-import { adaptImage } from '../services/geminiService';
+import { adaptImage, generateContentWithNewsContext, generateMultiPlatformContent } from '../services/geminiService';
 import Spinner from '../components/Spinner';
 import ComparisonSlider from '../components/ComparisonSlider';
 import Icon, { IconName } from '../components/Icon';
 import ImagePreviewModal from '../components/ImagePreviewModal';
 import AssetLibraryModal from '../components/AssetLibraryModal';
+import NewsDiscoveryPanel from '../components/NewsDiscoveryPanel';
 
 const ADAPTATION_COST = 3;
 
@@ -18,7 +19,7 @@ interface PlatformStudioProps {
   addImageToLibrary: (url: string) => void;
   credits: number;
   setCredits: React.Dispatch<React.SetStateAction<number>>;
-  addNotification: (message: string) => void;
+  addNotification: (message: string, type?: 'success' | 'error') => void;
   galleryImages: GalleryImage[];
 }
 
@@ -47,6 +48,12 @@ const PlatformStudio: React.FC<PlatformStudioProps> = ({
     const [isDragging, setIsDragging] = useState(false);
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
     const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'adapt' | 'news'>('adapt');
+    const [newsContext, setNewsContext] = useState<string | null>(null);
+    const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
+    const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+    const [newsArticles, setNewsArticles] = useState<any[]>([]);
+    const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
 
     React.useEffect(() => {
         setAdaptedImageUrl(null);
@@ -79,6 +86,49 @@ const PlatformStudio: React.FC<PlatformStudioProps> = ({
             addNotification('Adapted image saved to library!');
         }
     };
+
+    const handleNewsContext = useCallback((context: string) => {
+        setNewsContext(context);
+        addNotification('News context loaded! Ready to generate content.', 'success');
+    }, [addNotification]);
+
+    const handleArticlesDiscovered = useCallback((articles: any[]) => {
+        setNewsArticles(articles);
+        if (articles.length > 0) {
+            setSelectedArticle(articles[0]); // Select first article by default
+        }
+    }, []);
+
+    const handleGenerateContentWithNews = useCallback(async () => {
+        if (!newsContext) {
+            addNotification('Please discover news first', 'error');
+            return;
+        }
+
+        if (credits < 5) {
+            addNotification('Insufficient credits. You need 5 credits to generate content.', 'error');
+            return;
+        }
+
+        setIsGeneratingContent(true);
+        try {
+            const platforms = ['instagram', 'twitter', 'linkedin', 'facebook'];
+            const content = await generateMultiPlatformContent(
+                newsContext,
+                platforms,
+                masterImageUrl || undefined
+            );
+
+            setGeneratedContent(content);
+            setCredits(prev => prev - 5);
+            addNotification('Content generated successfully!', 'success');
+        } catch (error) {
+            console.error('Content generation failed:', error);
+            addNotification('Failed to generate content', 'error');
+        } finally {
+            setIsGeneratingContent(false);
+        }
+    }, [newsContext, masterImageUrl, credits, setCredits, addNotification]);
     
     const handleFile = useCallback((file: File | null) => {
         if (!file) return;
@@ -156,10 +206,36 @@ const PlatformStudio: React.FC<PlatformStudioProps> = ({
             <div className="w-full h-full flex flex-col animate-fade-in-up p-4 sm:p-6 lg:p-8">
                 <div className="flex-shrink-0 pb-6 pt-6 border-b border-gray-200 mb-6">
                     <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Platform Studio</h1>
-                    <p className="mt-2 text-base text-gray-600">Adapt your creative for any platform with a single click.</p>
+                    <p className="mt-2 text-base text-gray-600">Adapt your creative for any platform and generate content from latest news.</p>
+
+                    {/* Tab Navigation */}
+                    <div className="flex mt-4 space-x-1 bg-gray-100 p-1 rounded-lg">
+                        <button
+                            onClick={() => setActiveTab('adapt')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                activeTab === 'adapt'
+                                    ? 'bg-white text-gray-900 shadow'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            🎨 Image Adaptation
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('news')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                activeTab === 'news'
+                                    ? 'bg-white text-gray-900 shadow'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            🤖 News Content Generation
+                        </button>
+                    </div>
                 </div>
                 <div className="flex-grow min-h-0">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                    {/* Tab Content */}
+                    {activeTab === 'adapt' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                         {/* Left Column: Controls */}
                         <div className="lg:col-span-1 flex flex-col gap-6">
                             <div className="bg-white p-6 rounded-lg border">
@@ -253,6 +329,164 @@ const PlatformStudio: React.FC<PlatformStudioProps> = ({
                             )}
                         </div>
                     </div>
+                    )}
+
+                    {activeTab === 'news' && (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <NewsDiscoveryPanel
+                                    onNewsContext={handleNewsContext}
+                                    onArticlesDiscovered={handleArticlesDiscovered}
+                                    onError={(msg) => addNotification(msg, 'error')}
+                                    onSuccess={(msg) => addNotification(msg, 'success')}
+                                />
+
+                                <div className="space-y-6">
+                                    {/* Content Generation Section */}
+                                    <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-4">📱 Generate Content</h3>
+                                        <div className="space-y-4">
+                                            <div className="p-3 bg-gray-50 rounded-lg">
+                                                <p className="text-sm text-gray-600">
+                                                    {newsContext ? (
+                                                        <span className="flex items-center gap-2">
+                                                            <Icon name="check" className="w-4 h-4 text-green-600" />
+                                                            News context loaded and ready for content generation
+                                                        </span>
+                                                    ) : (
+                                                        <span className="flex items-center gap-2">
+                                                            <Icon name="info" className="w-4 h-4 text-blue-600" />
+                                                            Discover news first to generate contextual content
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                onClick={handleGenerateContentWithNews}
+                                                disabled={!newsContext || isGeneratingContent || credits < 5}
+                                                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                            >
+                                                {isGeneratingContent ? (
+                                                    <>
+                                                        <Spinner />
+                                                        <span>Generating Content...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Icon name="sparkles" className="w-4 h-4" />
+                                                        <span>Generate Multi-Platform Content (5 credits)</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Generated Content Display */}
+                                    {Object.keys(generatedContent).length > 0 && (
+                                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                            <h4 className="text-lg font-semibold text-gray-900 mb-4">✨ Generated Content</h4>
+                                            <div className="space-y-4">
+                                                {Object.entries(generatedContent).map(([platform, content]) => (
+                                                    <div key={platform} className="border border-gray-200 rounded-lg p-4">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <h5 className="font-medium text-gray-900 capitalize">
+                                                                {platform === 'instagram' && '📷'}
+                                                                {platform === 'twitter' && '🐦'}
+                                                                {platform === 'linkedin' && '💼'}
+                                                                {platform === 'facebook' && '👍'}
+                                                                {' '}{platform}
+                                                            </h5>
+                                                            <button
+                                                                onClick={() => navigator.clipboard.writeText(content)}
+                                                                className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded"
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-sm text-gray-600 whitespace-pre-wrap">{content}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Generated Images Display */}
+                                    {selectedArticle && selectedArticle.generated_images && (
+                                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                            <h4 className="text-lg font-semibold text-gray-900 mb-4">🎨 Generated Images</h4>
+                                            <div className="space-y-4">
+                                                {Object.entries(selectedArticle.generated_images).map(([platform, imageUrl]) => (
+                                                    <div key={platform} className="border border-gray-200 rounded-lg p-4">
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <h5 className="font-medium text-gray-900 capitalize">
+                                                                {platform === 'instagram' && '📷'}
+                                                                {platform === 'twitter' && '🐦'}
+                                                                {platform === 'linkedin' && '💼'}
+                                                                {platform === 'facebook' && '👍'}
+                                                                {' '}{platform}
+                                                            </h5>
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => addImageToLibrary(imageUrl as string)}
+                                                                    className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded"
+                                                                >
+                                                                    Save to Library
+                                                                </button>
+                                                                <a
+                                                                    href={imageUrl as string}
+                                                                    download={`news-${platform}-image.png`}
+                                                                    className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded"
+                                                                >
+                                                                    Download
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                        <div className="relative">
+                                                            <img
+                                                                src={imageUrl as string}
+                                                                alt={`Generated ${platform} image`}
+                                                                className="w-full max-w-xs mx-auto rounded-lg border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
+                                                                onClick={() => setPreviewImageUrl(imageUrl as string)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Article Selector */}
+                                    {newsArticles.length > 1 && (
+                                        <div className="bg-white rounded-lg border border-gray-200 p-6">
+                                            <h4 className="text-lg font-semibold text-gray-900 mb-4">📰 Select Article</h4>
+                                            <div className="space-y-2">
+                                                {newsArticles.map((article, index) => (
+                                                    <button
+                                                        key={index}
+                                                        onClick={() => setSelectedArticle(article)}
+                                                        className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                                                            selectedArticle === article
+                                                                ? 'border-blue-500 bg-blue-50'
+                                                                : 'border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        <div className="font-medium text-gray-900">{article.title}</div>
+                                                        <div className="text-sm text-gray-600 mt-1">{article.summary}</div>
+                                                        {article.generated_images && (
+                                                            <div className="text-xs text-blue-600 mt-1">
+                                                                🎨 {Object.keys(article.generated_images).length} images
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
             {previewImageUrl && (

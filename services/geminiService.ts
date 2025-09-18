@@ -594,3 +594,252 @@ export const generateCampaignPrompts = async (
       throw new Error("Could not generate campaign ideas. The AI returned an unexpected format.");
   }
 };
+
+/**
+ * Generates social media content using news context from DeepAgent
+ * @param newsContext News content context from DeepAgent
+ * @param contentType Type of content to generate
+ * @param platform Target social media platform
+ * @param imageUrl Optional image to include
+ * @returns Generated social media content
+ */
+export const generateContentWithNewsContext = async (
+  newsContext: string,
+  contentType: 'social_post' | 'article' | 'campaign',
+  platform?: string,
+  imageUrl?: string
+): Promise<string> => {
+  let prompt = `Based on the following news context, generate ${contentType} content`;
+
+  if (platform) {
+    prompt += ` for ${platform}`;
+  }
+
+  prompt += `:\n\n${newsContext}\n\nGenerate engaging, relevant content that incorporates the key insights from the news. Make it shareable and optimized for social media engagement.`;
+
+  const parts: any[] = [{ text: prompt }];
+
+  if (imageUrl) {
+    parts.unshift(dataUrlToPart(imageUrl));
+  }
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts },
+  });
+
+  const generatedContent = response.text.trim();
+  if (!generatedContent) {
+    throw new Error("Failed to generate content with news context");
+  }
+
+  return generatedContent;
+};
+
+/**
+ * Generates multiple social media posts for different platforms using news context
+ * @param newsContext News content context from DeepAgent
+ * @param platforms Array of target platforms
+ * @param imageUrl Optional image to include
+ * @returns Object with platform-specific content
+ */
+export const generateMultiPlatformContent = async (
+  newsContext: string,
+  platforms: string[],
+  imageUrl?: string
+): Promise<Record<string, string>> => {
+  const prompt = `Based on the following news context, generate social media posts optimized for each of these platforms: ${platforms.join(', ')}.
+
+News Context:
+${newsContext}
+
+For each platform, create content that:
+- Incorporates key insights from the news
+- Uses platform-appropriate tone and format
+- Includes relevant hashtags
+- Is optimized for engagement
+
+Return the content in JSON format with platform names as keys.`;
+
+  const parts: any[] = [{ text: prompt }];
+
+  if (imageUrl) {
+    parts.unshift(dataUrlToPart(imageUrl));
+  }
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: platforms.reduce((acc, platform) => ({
+          ...acc,
+          [platform]: { type: Type.STRING }
+        }), {}),
+        required: platforms
+      }
+    }
+  });
+
+  try {
+    const jsonText = response.text.trim();
+    const parsed = JSON.parse(jsonText);
+    return parsed;
+  } catch (e) {
+    console.error("Failed to parse multi-platform content JSON:", e);
+    throw new Error("Could not generate multi-platform content. The AI returned an unexpected format.");
+  }
+};
+
+/**
+ * Generates a visual prompt from news content for image creation
+ * @param title News article title
+ * @param summary News article summary
+ * @param keyPoints Key points from the article
+ * @param sentiment Article sentiment (positive, negative, neutral)
+ * @returns Optimized visual prompt for image generation
+ */
+export const generateVisualPromptFromNews = async (
+  title: string,
+  summary: string,
+  keyPoints: string[],
+  sentiment: string = 'neutral'
+): Promise<string> => {
+  const prompt = `Create a compelling visual prompt for generating an image that represents this news story:
+
+Title: ${title}
+Summary: ${summary}
+Key Points: ${keyPoints.join(', ')}
+Sentiment: ${sentiment}
+
+Generate a detailed visual description that would create an engaging, professional image for social media. The image should:
+- Be visually striking and professional
+- Represent the core concept of the news story
+- Be suitable for social media sharing
+- Match the sentiment of the story
+- Include modern, tech-forward visual elements if relevant
+- Avoid text overlays (text will be added separately)
+
+Return only the visual prompt description, nothing else.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [{ text: prompt }] },
+  });
+
+  const visualPrompt = response.text.trim();
+  if (!visualPrompt) {
+    throw new Error("Failed to generate visual prompt from news content");
+  }
+
+  return visualPrompt;
+};
+
+/**
+ * Generates an image for news content using Gemini Imagen
+ * @param title News article title
+ * @param summary News article summary
+ * @param keyPoints Key points from the article
+ * @param sentiment Article sentiment
+ * @param aspectRatio Desired aspect ratio for the image
+ * @returns Generated image as data URL
+ */
+export const generateNewsContentImage = async (
+  title: string,
+  summary: string,
+  keyPoints: string[] = [],
+  sentiment: string = 'neutral',
+  aspectRatio: '1:1' | '9:16' | '16:9' | '4:5' = '1:1'
+): Promise<string> => {
+  // First, generate a visual prompt from the news content
+  const visualPrompt = await generateVisualPromptFromNews(title, summary, keyPoints, sentiment);
+
+  // Enhance the prompt with aspect ratio considerations
+  let enhancedPrompt = visualPrompt;
+
+  if (aspectRatio === '9:16') {
+    enhancedPrompt += " Composed for vertical/portrait format, suitable for mobile viewing and stories.";
+  } else if (aspectRatio === '16:9') {
+    enhancedPrompt += " Composed for horizontal/landscape format, suitable for wide displays and banners.";
+  } else if (aspectRatio === '4:5') {
+    enhancedPrompt += " Composed for portrait format, optimized for social media posts.";
+  } else {
+    enhancedPrompt += " Composed for square format, perfect for social media profile and feed posts.";
+  }
+
+  // Generate the image using Imagen
+  const response = await ai.models.generateImages({
+    model: 'imagen-4.0-generate-001',
+    prompt: enhancedPrompt,
+    config: {
+      numberOfImages: 1,
+      outputMimeType: 'image/png',
+      aspectRatio: aspectRatio,
+    },
+  });
+
+  const base64ImageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+  if (!base64ImageBytes) {
+    throw new Error("News image generation failed, no image bytes returned.");
+  }
+
+  return `data:image/png;base64,${base64ImageBytes}`;
+};
+
+/**
+ * Generates multiple platform-optimized images for news content
+ * @param title News article title
+ * @param summary News article summary
+ * @param keyPoints Key points from the article
+ * @param sentiment Article sentiment
+ * @param platforms Array of platforms to generate images for
+ * @returns Object with platform-specific images
+ */
+export const generatePlatformOptimizedNewsImages = async (
+  title: string,
+  summary: string,
+  keyPoints: string[] = [],
+  sentiment: string = 'neutral',
+  platforms: string[] = ['instagram', 'twitter', 'linkedin', 'facebook']
+): Promise<Record<string, string>> => {
+  const platformAspectRatios: Record<string, '1:1' | '9:16' | '16:9' | '4:5'> = {
+    instagram: '1:1',
+    twitter: '16:9',
+    linkedin: '4:5',
+    facebook: '16:9',
+    story: '9:16',
+    reel: '9:16'
+  };
+
+  const images: Record<string, string> = {};
+
+  // Generate images for each platform concurrently for better performance
+  const imagePromises = platforms.map(async (platform) => {
+    const aspectRatio = platformAspectRatios[platform] || '1:1';
+    try {
+      const imageUrl = await generateNewsContentImage(
+        title,
+        summary,
+        keyPoints,
+        sentiment,
+        aspectRatio
+      );
+      return { platform, imageUrl };
+    } catch (error) {
+      console.error(`Failed to generate image for ${platform}:`, error);
+      return { platform, imageUrl: null };
+    }
+  });
+
+  const results = await Promise.all(imagePromises);
+
+  results.forEach(({ platform, imageUrl }) => {
+    if (imageUrl) {
+      images[platform] = imageUrl;
+    }
+  });
+
+  return images;
+};

@@ -18,7 +18,7 @@ interface MagicEditProps {
   imageUrl: string | null;
   onNavigate: (view: View) => void;
   setMasterImage: (url: string | null) => void;
-  addImageToLibrary: (url: string) => void;
+  addImageToLibrary: (url: string, name?: string, imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited') => void;
   credits: number;
   setCredits: React.Dispatch<React.SetStateAction<number>>;
   addNotification: (message: string) => void;
@@ -299,7 +299,7 @@ const MagicEdit: React.FC<MagicEditProps> = ({
   
   const handleSaveToLibrary = () => {
     if (editedImageUrl) {
-        addImageToLibrary(editedImageUrl);
+        addImageToLibrary(editedImageUrl, 'Magic Edit', 'edited');
         addNotification('Image saved to library!');
     }
   };

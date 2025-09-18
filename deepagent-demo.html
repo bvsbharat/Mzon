@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Hunter DeepAgent Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #1e293b;
+            font-size: 28px;
+        }
+        .demo-section {
+            margin-bottom: 30px;
+            padding: 24px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #1e293b;
+        }
+        .input-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #374151;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        button {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 12px;
+            transition: all 0.3s;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+        }
+        button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .status-container {
+            margin: 24px 0;
+            display: none;
+        }
+        .status-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        .agent-stream {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            background: white;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+        }
+        .stream-message {
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+            background: #f1f5f9;
+        }
+        .stream-message.start { border-left-color: #10b981; }
+        .stream-message.stream { border-left-color: #3b82f6; }
+        .stream-message.complete { border-left-color: #059669; background: #ecfdf5; }
+        .stream-message.error { border-left-color: #ef4444; background: #fef2f2; }
+        .message-header {
+            display: flex;
+            justify-content: between;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .message-content {
+            color: #64748b;
+        }
+        .results-container {
+            margin-top: 30px;
+            display: none;
+        }
+        .article-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .article-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition: all 0.3s;
+        }
+        .article-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            border-color: #3b82f6;
+        }
+        .article-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+        .article-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 11px;
+            color: #64748b;
+        }
+        .meta-badge {
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+        .article-summary {
+            color: #4b5563;
+            line-height: 1.6;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .social-posts {
+            margin-top: 16px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 16px;
+        }
+        .social-posts-header {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #1e293b;
+            font-size: 14px;
+        }
+        .social-post {
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #10b981;
+        }
+        .platform-badge {
+            background: #3b82f6;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .post-content {
+            margin: 8px 0;
+            line-height: 1.5;
+            font-size: 13px;
+        }
+        .post-stats {
+            display: flex;
+            gap: 12px;
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 6px;
+        }
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        .status-connected { background: #dcfce7; color: #166534; }
+        .status-disconnected { background: #fef2f2; color: #dc2626; }
+        .status-connecting { background: #fef3c7; color: #d97706; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 News Hunter DeepAgent</h1>
+        <p style="text-align: center; color: #64748b; margin-bottom: 40px;">
+            Intelligent news discovery and social media content generation using hierarchical AI agents
+        </p>
+
+        <div class="demo-section">
+            <div class="section-title">🚀 Start DeepAgent Discovery</div>
+            <div class="input-group">
+                <label for="tags">News Topics (comma-separated):</label>
+                <input type="text" id="tags" placeholder="AI, social media, content creation" value="AI, social media, content creation">
+            </div>
+            <div class="input-group">
+                <label for="maxArticles">Articles to Generate:</label>
+                <select id="maxArticles">
+                    <option value="3">3 articles</option>
+                    <option value="5">5 articles</option>
+                    <option value="8">8 articles</option>
+                </select>
+            </div>
+            <button onclick="startDeepAgentQuery()" id="startBtn">🎯 Start DeepAgent Discovery</button>
+        </div>
+
+        <div class="status-container" id="statusContainer">
+            <div class="section-title">🔄 Agent Processing Status</div>
+            <div class="status-header">
+                <div>Progress</div>
+                <div id="connectionStatus" class="connection-status status-disconnected">
+                    ⚡ Disconnected
+                </div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="agent-stream" id="agentStream"></div>
+        </div>
+
+        <div class="results-container" id="resultsContainer">
+            <div class="section-title">✨ Generated Content & Social Media Posts</div>
+            <div id="sessionStats" style="margin-bottom: 20px; padding: 16px; background: #f0f9ff; border-radius: 8px; display: none;"></div>
+            <div class="article-grid" id="articleGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        let websocket = null;
+        let currentSessionId = null;
+
+        function updateConnectionStatus(status, message) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = `connection-status status-${status}`;
+            statusEl.textContent = message;
+        }
+
+        async function startDeepAgentQuery() {
+            const tagsInput = document.getElementById('tags').value;
+            const maxArticles = document.getElementById('maxArticles').value;
+            const startBtn = document.getElementById('startBtn');
+
+            if (!tagsInput.trim()) {
+                alert('Please enter at least one topic');
+                return;
+            }
+
+            const tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag);
+
+            // Reset UI
+            startBtn.disabled = true;
+            startBtn.textContent = '🔄 Connecting to DeepAgent...';
+            document.getElementById('agentStream').innerHTML = '';
+            document.getElementById('articleGrid').innerHTML = '';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('statusContainer').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+
+            // Generate session ID
+            currentSessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+
+            try {
+                // Connect to WebSocket following Event Hunter pattern
+                websocket = new WebSocket('ws://localhost:8000/ws/query');
+
+                websocket.onopen = function(event) {
+                    updateConnectionStatus('connected', '🟢 Connected to DeepAgent');
+                    addStreamMessage('system', 'Connected to News Hunter DeepAgent', '', 'start');
+
+                    // Send query following Event Hunter format
+                    const queryMessage = {
+                        action: 'start_query',
+                        session_id: currentSessionId,
+                        tags: tags,
+                        max_articles: parseInt(maxArticles)
+                    };
+
+                    websocket.send(JSON.stringify(queryMessage));
+                    startBtn.textContent = '🤖 DeepAgent Working...';
+                };
+
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleAgentMessage(data);
+                };
+
+                websocket.onerror = function(error) {
+                    updateConnectionStatus('disconnected', '❌ Connection Error');
+                    addStreamMessage('system', 'WebSocket connection error', error.toString(), 'error');
+                    resetUI();
+                };
+
+                websocket.onclose = function(event) {
+                    updateConnectionStatus('disconnected', '⚡ Disconnected');
+                    if (event.code !== 1000) { // Not normal closure
+                        addStreamMessage('system', 'Connection closed unexpectedly', `Code: ${event.code}`, 'error');
+                    }
+                };
+
+            } catch (error) {
+                console.error('Error starting DeepAgent query:', error);
+                addStreamMessage('system', 'Failed to start query', error.toString(), 'error');
+                resetUI();
+            }
+        }
+
+        function handleAgentMessage(data) {
+            const { type, agent, message, progress, session_id } = data;
+
+            // Add message to stream
+            addStreamMessage(agent || 'system', message, '', type);
+
+            // Update progress
+            if (progress !== undefined) {
+                document.getElementById('progressFill').style.width = progress + '%';
+            }
+
+            // Handle completion
+            if (type === 'complete') {
+                handleQueryComplete(data);
+            }
+
+            // Handle error
+            if (type === 'error') {
+                resetUI();
+            }
+        }
+
+        function addStreamMessage(agent, message, details, type) {
+            const streamEl = document.getElementById('agentStream');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `stream-message ${type}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+            const agentName = agent || 'system';
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span>${agentName.toUpperCase()}</span>
+                    <span>${timestamp}</span>
+                </div>
+                <div class="message-content">${message}</div>
+                ${details ? `<div class="message-content" style="font-size: 11px; opacity: 0.7;">${details}</div>` : ''}
+            `;
+
+            streamEl.appendChild(messageDiv);
+            streamEl.scrollTop = streamEl.scrollHeight;
+        }
+
+        async function handleQueryComplete(data) {
+            const { session_id, data: responseData } = data;
+
+            // Show session stats
+            if (responseData && responseData.session_summary) {
+                const stats = responseData.session_summary;
+                const statsEl = document.getElementById('sessionStats');
+                statsEl.innerHTML = `
+                    <strong>🎉 Discovery Complete!</strong><br>
+                    📊 Articles: ${stats.articles_found} • 📱 Social Posts: ${stats.social_posts_generated} • 🏷️ Topics: ${stats.tags_processed.join(', ')}
+                `;
+                statsEl.style.display = 'block';
+            }
+
+            // Get full session data
+            try {
+                const response = await fetch(`http://localhost:8000/api/news/articles/${session_id}`);
+                const sessionData = await response.json();
+
+                displayResults(sessionData.articles);
+                document.getElementById('resultsContainer').style.display = 'block';
+
+            } catch (error) {
+                console.error('Error fetching session data:', error);
+            }
+
+            resetUI();
+        }
+
+        function displayResults(articles) {
+            const gridEl = document.getElementById('articleGrid');
+            gridEl.innerHTML = '';
+
+            articles.forEach(article => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = 'article-card';
+
+                const socialPostsHtml = article.social_posts ? article.social_posts.map(post => `
+                    <div class="social-post">
+                        <span class="platform-badge">${post.platform}</span>
+                        <div class="post-content">${post.content}</div>
+                        <div class="post-stats">
+                            <span>📊 ${Math.round(post.engagement_prediction || 0)}% engagement</span>
+                            <span>✍️ ${post.character_count} chars</span>
+                        </div>
+                    </div>
+                `).join('') : '';
+
+                cardDiv.innerHTML = `
+                    <div class="article-title">${article.title}</div>
+                    <div class="article-meta">
+                        <span class="meta-badge">📰 ${article.source}</span>
+                        <span class="meta-badge">🎯 ${Math.round(article.relevance_score || 0)}% relevance</span>
+                        <span class="meta-badge">📈 ${Math.round(article.trending_potential || 0)}% trending</span>
+                        <span class="meta-badge">😊 ${article.sentiment || 'neutral'}</span>
+                    </div>
+                    <div class="article-summary">${article.summary || article.description}</div>
+                    ${socialPostsHtml ? `
+                        <div class="social-posts">
+                            <div class="social-posts-header">📱 Generated Social Media Content</div>
+                            ${socialPostsHtml}
+                        </div>
+                    ` : ''}
+                `;
+
+                gridEl.appendChild(cardDiv);
+            });
+        }
+
+        function resetUI() {
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = false;
+            startBtn.textContent = '🎯 Start DeepAgent Discovery';
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.close();
+            }
+        }
+
+        // Auto-populate demo on load
+        window.addEventListener('load', function() {
+            console.log('🤖 News Hunter DeepAgent Demo loaded');
+            console.log('Backend: http://localhost:8000');
+            console.log('WebSocket: ws://localhost:8000/ws/query');
+
+            updateConnectionStatus('disconnected', '⚡ Ready to Connect');
+        });
+    </script>
+</body>
+</html>

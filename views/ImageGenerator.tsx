@@ -16,7 +16,7 @@ interface ImageGeneratorProps {
   onSendToComposer: (url: string) => void;
   onImageGeneratedForComposer: (url: string, targetSlot: number) => void;
   composerGenContext: ComposerGenContext;
-  addImageToLibrary: (url: string) => void;
+  addImageToLibrary: (url: string, name?: string, imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited') => void;
   credits: number;
   setCredits: React.Dispatch<React.SetStateAction<number>>;
   addNotification: (message: string) => void;
@@ -72,7 +72,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
   
   const handleSaveToLibrary = () => {
     if (generatedImageUrl) {
-        addImageToLibrary(generatedImageUrl);
+        addImageToLibrary(generatedImageUrl, 'Generated Image', 'generated');
         addNotification('Image saved to library!');
     }
   };

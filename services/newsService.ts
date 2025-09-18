@@ -1,6 +1,7 @@
 import { NewsItem, NewsCategory, NewsStats } from '../types';
+import { agenticNewsService, startAgenticNewsDiscovery } from './agenticNewsService';
 
-// Mock news data for demonstration
+// Enhanced mock news data with backend-compatible properties
 const mockNewsData: NewsItem[] = [
   {
     id: '1',
@@ -17,7 +18,11 @@ const mockNewsData: NewsItem[] = [
     isPremium: true,
     isFresh: true,
     isFeatured: true,
-    hashtags: ['#AI', '#GenerativeAI', '#TechNews']
+    hashtags: ['#AI', '#GenerativeAI', '#TechNews'],
+    tags: ['ai', 'generative ai', 'technology'],
+    relevanceScore: 92,
+    trendingPotential: 85,
+    sentiment: 'positive' as const
   },
   {
     id: '2',
@@ -34,7 +39,11 @@ const mockNewsData: NewsItem[] = [
     isPremium: false,
     isFresh: true,
     isFeatured: false,
-    hashtags: ['#Design', '#UX', '#Trends2024']
+    hashtags: ['#Design', '#UX', '#Trends2024'],
+    tags: ['design', 'ux', 'trends', 'minimalism'],
+    relevanceScore: 88,
+    trendingPotential: 75,
+    sentiment: 'neutral' as const
   },
   {
     id: '3',
@@ -51,7 +60,11 @@ const mockNewsData: NewsItem[] = [
     isPremium: true,
     isFresh: false,
     isFeatured: true,
-    hashtags: ['#Marketing', '#Automation', '#SocialMedia']
+    hashtags: ['#Marketing', '#Automation', '#SocialMedia'],
+    tags: ['marketing', 'automation', 'social media', 'tools'],
+    relevanceScore: 90,
+    trendingPotential: 82,
+    sentiment: 'positive' as const
   },
   {
     id: '4',
@@ -68,7 +81,11 @@ const mockNewsData: NewsItem[] = [
     isPremium: false,
     isFresh: false,
     isFeatured: false,
-    hashtags: ['#Photography', '#DigitalPhotography', '#AI']
+    hashtags: ['#Photography', '#DigitalPhotography', '#AI'],
+    tags: ['photography', 'digital', 'ai', 'workflows'],
+    relevanceScore: 78,
+    trendingPotential: 65,
+    sentiment: 'neutral' as const
   },
   {
     id: '5',
@@ -85,7 +102,11 @@ const mockNewsData: NewsItem[] = [
     isPremium: true,
     isFresh: false,
     isFeatured: false,
-    hashtags: ['#Startups', '#Funding', '#CreativeTech']
+    hashtags: ['#Startups', '#Funding', '#CreativeTech'],
+    tags: ['startup', 'funding', 'creative tech', 'investment'],
+    relevanceScore: 85,
+    trendingPotential: 88,
+    sentiment: 'positive' as const
   },
   {
     id: '6',
@@ -102,14 +123,30 @@ const mockNewsData: NewsItem[] = [
     isPremium: false,
     isFresh: false,
     isFeatured: true,
-    hashtags: ['#Tools', '#Design', '#CreativeTools']
+    hashtags: ['#Tools', '#Design', '#CreativeTools'],
+    tags: ['tools', 'design', 'creative', 'workflow'],
+    relevanceScore: 92,
+    trendingPotential: 78,
+    sentiment: 'positive' as const
   }
 ];
 
 /**
- * Gets news statistics for dashboard display
+ * Gets news statistics - tries agentic backend first, falls back to mock data
  */
 export const getNewsStats = async (): Promise<NewsStats> => {
+  try {
+    // Try to get stats from agentic backend
+    const backendHealth = await agenticNewsService.checkBackendHealth();
+
+    if (backendHealth.healthy) {
+      return await agenticNewsService.getNewsStats();
+    }
+  } catch (error) {
+    console.warn('Agentic backend not available, using mock data');
+  }
+
+  // Fallback to mock data
   await new Promise(resolve => setTimeout(resolve, 200));
 
   const freshArticles = mockNewsData.filter(item => item.isFresh).length;
@@ -118,15 +155,19 @@ export const getNewsStats = async (): Promise<NewsStats> => {
   return {
     freshArticles,
     premiumSources,
-    activeAPIs: 1, // Mock value for now
+    activeAPIs: 1,
     lastUpdate: new Date().toISOString(),
-    totalArticles: mockNewsData.length
+    totalArticles: mockNewsData.length,
+    activeSessions: 0,
+    totalArticlesProcessed: 0,
+    activeMonitors: 0,
+    cacheHitRate: 0,
+    averageProcessingTime: 0
   };
 };
 
 /**
- * Simulates fetching news from an API
- * In a real implementation, this would make HTTP requests to news APIs like NewsAPI, RSS feeds, etc.
+ * Fetches news - uses mock data for now, can be extended with agentic discovery
  */
 export const fetchNews = async (category?: NewsCategory): Promise<NewsItem[]> => {
   // Simulate network delay
@@ -142,6 +183,27 @@ export const fetchNews = async (category?: NewsCategory): Promise<NewsItem[]> =>
   return filteredNews.sort((a, b) =>
     new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
+};
+
+/**
+ * Start intelligent news discovery with agentic backend
+ */
+export const discoverNewsWithAgents = async (
+  tags: string[],
+  categories?: NewsCategory[],
+  maxArticles: number = 20
+): Promise<{ sessionId: string; status: string; message: string }> => {
+  try {
+    const response = await startAgenticNewsDiscovery({
+      tags,
+      categories,
+      maxArticles
+    });
+    return response;
+  } catch (error) {
+    console.error('Agentic news discovery failed:', error);
+    throw error;
+  }
 };
 
 /**
@@ -162,6 +224,7 @@ export const getNewsCategories = (): { value: NewsCategory; label: string }[] =>
 
 /**
  * Searches news by title or description
+ * Enhanced with intelligent tag-based search
  */
 export const searchNews = async (query: string, category?: NewsCategory): Promise<NewsItem[]> => {
   await new Promise(resolve => setTimeout(resolve, 300));
@@ -173,14 +236,38 @@ export const searchNews = async (query: string, category?: NewsCategory): Promis
   }
 
   const searchTerm = query.toLowerCase();
-  return news.filter(item =>
-    item.title.toLowerCase().includes(searchTerm) ||
-    item.description.toLowerCase().includes(searchTerm)
-  );
+  const searchWords = searchTerm.split(' ');
+
+  return news.filter(item => {
+    const content = `${item.title} ${item.description} ${item.tags?.join(' ') || ''}`.toLowerCase();
+
+    // Exact phrase match gets highest priority
+    if (content.includes(searchTerm)) {
+      return true;
+    }
+
+    // Tag matching
+    if (item.tags) {
+      const tagMatch = item.tags.some(tag =>
+        tag.toLowerCase().includes(searchTerm) || searchTerm.includes(tag.toLowerCase())
+      );
+      if (tagMatch) return true;
+    }
+
+    // Word-based matching (at least 50% of search words should match)
+    const matchedWords = searchWords.filter(word => content.includes(word));
+    return matchedWords.length >= Math.ceil(searchWords.length * 0.5);
+  }).sort((a, b) => {
+    // Sort by relevance score if available, otherwise by date
+    if (a.relevanceScore && b.relevanceScore) {
+      return b.relevanceScore - a.relevanceScore;
+    }
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  });
 };
 
 /**
- * Format date for display
+ * Format date for display with enhanced relative formatting
  */
 export const formatNewsDate = (dateString: string): string => {
   const date = new Date(dateString);
@@ -202,3 +289,66 @@ export const formatNewsDate = (dateString: string): string => {
     return date.toLocaleDateString();
   }
 };
+
+/**
+ * Check if agentic backend is available
+ */
+export const checkBackendAvailability = async (): Promise<boolean> => {
+  try {
+    const health = await agenticNewsService.checkBackendHealth();
+    return health.healthy;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Get available tags from articles for suggestion
+ */
+export const getPopularTags = (): string[] => {
+  const allTags = mockNewsData.flatMap(article => article.tags || []);
+  const tagCounts = allTags.reduce((counts, tag) => {
+    counts[tag] = (counts[tag] || 0) + 1;
+    return counts;
+  }, {} as Record<string, number>);
+
+  return Object.entries(tagCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 20)
+    .map(([tag]) => tag);
+};
+
+/**
+ * Format trending potential score for display
+ */
+export const formatTrendingScore = (score?: number): string => {
+  if (!score) return 'Unknown';
+  if (score >= 80) return 'High 🔥';
+  if (score >= 60) return 'Medium 📈';
+  if (score >= 40) return 'Low 📊';
+  return 'Minimal ➡️';
+};
+
+/**
+ * Format sentiment for display
+ */
+export const formatSentiment = (sentiment?: string): string => {
+  switch (sentiment) {
+    case 'positive': return '😊 Positive';
+    case 'negative': return '😟 Negative';
+    case 'neutral': return '😐 Neutral';
+    default: return '❓ Unknown';
+  }
+};
+
+// Re-export agentic news service functions for convenience
+export {
+  agenticNewsService,
+  startAgenticNewsDiscovery,
+  getAgenticNewsStats,
+  checkAgenticBackendHealth,
+  startTagMonitoring,
+  connectToNewsUpdates,
+  disconnectFromNewsUpdates,
+  getProcessedNewsResults
+} from './agenticNewsService';

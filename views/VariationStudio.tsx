@@ -15,7 +15,7 @@ interface VariationStudioProps {
   masterImageUrl: string | null;
   onNavigate: (view: View) => void;
   setMasterImage: (url: string | null) => void;
-  addImageToLibrary: (url: string) => void;
+  addImageToLibrary: (url: string, name?: string, imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited') => void;
   credits: number;
   setCredits: React.Dispatch<React.SetStateAction<number>>;
   addNotification: (message: string) => void;
@@ -108,7 +108,7 @@ const VariationStudio: React.FC<VariationStudioProps> = ({
 
     const handleSaveToLibrary = () => {
         if (latestVariationUrl) {
-            addImageToLibrary(latestVariationUrl);
+            addImageToLibrary(latestVariationUrl, 'Variation', 'variation');
             addNotification('Image saved to library!');
         }
     };

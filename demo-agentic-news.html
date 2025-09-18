@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic News Discovery Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .demo-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007AFF, #00C4FF);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .agent-updates {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            background: #f9f9f9;
+            display: none;
+        }
+        .agent-update {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #007AFF;
+        }
+        .agent-name {
+            font-weight: 600;
+            color: #007AFF;
+        }
+        .agent-message {
+            color: #666;
+            margin-top: 2px;
+        }
+        .results-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .article-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .article-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .article-meta {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        .article-description {
+            color: #555;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        .social-posts {
+            margin-top: 15px;
+        }
+        .social-post {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border-left: 3px solid #28a745;
+        }
+        .platform-badge {
+            background: #007AFF;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Agentic News Discovery Demo</h1>
+
+        <div class="demo-section">
+            <h3>Start News Discovery</h3>
+            <div class="input-group">
+                <label for="tags">Enter tags (comma-separated):</label>
+                <input type="text" id="tags" placeholder="ai, social media, content creation" value="ai, social media, content creation">
+            </div>
+            <div class="input-group">
+                <label for="maxArticles">Max Articles:</label>
+                <select id="maxArticles">
+                    <option value="3">3 articles</option>
+                    <option value="5">5 articles</option>
+                    <option value="10">10 articles</option>
+                </select>
+            </div>
+            <button onclick="startDiscovery()" id="discoverBtn">Start Agentic Discovery</button>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <h4>Agent Progress</h4>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="agent-updates" id="agentUpdates"></div>
+        </div>
+
+        <div class="results-container" id="resultsContainer">
+            <h3>Discovery Results</h3>
+            <div id="articlesList"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentSession = null;
+        let websocket = null;
+
+        async function startDiscovery() {
+            const tagsInput = document.getElementById('tags').value;
+            const maxArticles = document.getElementById('maxArticles').value;
+            const discoverBtn = document.getElementById('discoverBtn');
+
+            if (!tagsInput.trim()) {
+                alert('Please enter at least one tag');
+                return;
+            }
+
+            const tags = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag);
+
+            discoverBtn.disabled = true;
+            discoverBtn.textContent = 'Starting Discovery...';
+
+            // Clear previous results
+            document.getElementById('agentUpdates').innerHTML = '';
+            document.getElementById('articlesList').innerHTML = '';
+            document.getElementById('progressFill').style.width = '0%';
+
+            // Show progress container
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('agentUpdates').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+
+            try {
+                // Start discovery
+                const response = await fetch('http://localhost:8000/api/news/discover', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tags: tags,
+                        categories: ['technology', 'marketing'],
+                        max_articles: parseInt(maxArticles)
+                    })
+                });
+
+                const data = await response.json();
+                currentSession = data.session_id;
+
+                // Connect to WebSocket for real-time updates
+                connectWebSocket(currentSession);
+
+            } catch (error) {
+                console.error('Error starting discovery:', error);
+                addAgentUpdate('System', 'error', 'Failed to start discovery: ' + error.message, 0);
+                resetUI();
+            }
+        }
+
+        function connectWebSocket(sessionId) {
+            const wsUrl = `ws://localhost:8000/api/news/stream/${sessionId}`;
+            websocket = new WebSocket(wsUrl);
+
+            websocket.onopen = function(event) {
+                addAgentUpdate('WebSocket', 'connected', 'Connected to agent updates stream', 0);
+            };
+
+            websocket.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+
+                if (message.type === 'agent_update' && message.update) {
+                    const update = message.update;
+                    addAgentUpdate(update.agent_name, update.status, update.message, update.progress);
+
+                    if (update.progress !== undefined) {
+                        document.getElementById('progressFill').style.width = update.progress + '%';
+                    }
+
+                    if (update.status === 'completed' && update.agent_name === 'orchestrator') {
+                        handleDiscoveryCompleted(update);
+                    }
+                }
+            };
+
+            websocket.onerror = function(error) {
+                addAgentUpdate('WebSocket', 'error', 'Connection error occurred', 0);
+                resetUI();
+            };
+
+            websocket.onclose = function(event) {
+                addAgentUpdate('WebSocket', 'disconnected', 'Connection closed', 100);
+            };
+        }
+
+        function addAgentUpdate(agentName, status, message, progress) {
+            const updatesContainer = document.getElementById('agentUpdates');
+            const updateDiv = document.createElement('div');
+            updateDiv.className = 'agent-update';
+
+            const timestamp = new Date().toLocaleTimeString();
+            updateDiv.innerHTML = `
+                <div class="agent-name">${agentName} [${status.toUpperCase()}]</div>
+                <div class="agent-message">${message}</div>
+                <div style="font-size: 10px; color: #999; margin-top: 4px;">
+                    ${timestamp} ${progress !== undefined ? `• ${Math.round(progress)}%` : ''}
+                </div>
+            `;
+
+            updatesContainer.appendChild(updateDiv);
+            updatesContainer.scrollTop = updatesContainer.scrollHeight;
+        }
+
+        function handleDiscoveryCompleted(update) {
+            if (update.data && update.data.processed_articles) {
+                displayResults(update.data.processed_articles);
+                document.getElementById('resultsContainer').style.display = 'block';
+            }
+            resetUI();
+        }
+
+        function displayResults(articles) {
+            const articlesList = document.getElementById('articlesList');
+            articlesList.innerHTML = '';
+
+            articles.forEach(article => {
+                const articleDiv = document.createElement('div');
+                articleDiv.className = 'article-card';
+
+                const socialPostsHtml = article.social_posts ? article.social_posts.map(post => `
+                    <div class="social-post">
+                        <span class="platform-badge">${post.platform}</span>
+                        <div style="margin-top: 5px;">${post.content}</div>
+                        <div style="margin-top: 5px; font-size: 11px; color: #666;">
+                            Engagement: ${Math.round(post.engagement_prediction || 0)}% •
+                            Characters: ${post.character_count}
+                        </div>
+                    </div>
+                `).join('') : '';
+
+                articleDiv.innerHTML = `
+                    <div class="article-title">${article.title}</div>
+                    <div class="article-meta">
+                        <span>📰 ${article.source}</span>
+                        <span>🎯 Relevance: ${Math.round(article.relevance_score || 0)}%</span>
+                        <span>📈 Trending: ${Math.round(article.trending_potential || 0)}%</span>
+                        <span>😊 ${article.sentiment || 'neutral'}</span>
+                    </div>
+                    <div class="article-description">${article.description}</div>
+                    ${article.summary ? `<div style="background: #f0f8ff; padding: 10px; border-radius: 6px; margin: 10px 0;"><strong>AI Summary:</strong> ${article.summary}</div>` : ''}
+                    ${socialPostsHtml ? `<div class="social-posts"><h4>Generated Social Media Posts:</h4>${socialPostsHtml}</div>` : ''}
+                `;
+
+                articlesList.appendChild(articleDiv);
+            });
+        }
+
+        function resetUI() {
+            const discoverBtn = document.getElementById('discoverBtn');
+            discoverBtn.disabled = false;
+            discoverBtn.textContent = 'Start Agentic Discovery';
+        }
+
+        // Auto-populate with demo data
+        window.addEventListener('load', function() {
+            console.log('🚀 Agentic News Discovery Demo loaded');
+            console.log('Backend URL: http://localhost:8000');
+            console.log('Frontend URL: http://localhost:5174');
+        });
+    </script>
+</body>
+</html>

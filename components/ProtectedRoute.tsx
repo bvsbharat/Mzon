@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import LandingPage from '../views/LandingPage';
+import ShaderLanding from '../views/ShaderLanding';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -21,9 +21,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
-  // If not authenticated, show landing page
+  // If not authenticated, show shader landing page
   if (!isAuthenticated) {
-    return <LandingPage onAuthSuccess={() => window.location.reload()} />;
+    return <ShaderLanding onAuthSuccess={() => window.location.reload()} />;
   }
 
   // If authenticated, render the protected content
