@@ -29,6 +29,7 @@ export interface ContentGenerationRequest {
   emailTypes?: ('newsletter' | 'promotional' | 'transactional' | 'announcement')[];
   generateImages?: boolean;
   generateVideos?: boolean;
+  videoDuration?: number; // Duration in seconds (8, 16, 24, 30)
   productImageUrl?: string; // For video generation
   brandOverride?: BrandConfiguration;
   customPrompt?: string;
@@ -372,27 +373,92 @@ class ContentGenerationService {
             brandStyle: brandContext.brandStyle || 'modern and professional'
           } : undefined;
 
-          // Generate video using FAL AI service
-          const videoResult = await falAiService.generateNewsVideo(
-            request.productImageUrl,
-            request.newsItem.title,
-            request.articleContent?.summary || request.newsItem.description,
-            request.articleContent?.keyPoints || request.newsItem.keyPoints || [],
-            platform,
-            falBrandContext
-          );
+          // Determine number of segments needed based on requested duration
+          const requestedDuration = request.videoDuration || 8;
+          const segmentCount = Math.ceil(requestedDuration / 8);
+
+          console.log(`📹 Generating ${segmentCount} segment(s) for ${requestedDuration}s video`);
+
+          // Generate multiple video segments for longer durations
+          const videoSegments: string[] = [];
+          let compositeImageUrl = '';
+
+          for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+            console.log(`🎬 Generating segment ${segmentIndex + 1}/${segmentCount} for ${platform}...`);
+
+            // Create varied prompts for each segment
+            const segmentPrompts = this.generateSegmentPrompts(
+              request.newsItem.title,
+              request.articleContent?.summary || request.newsItem.description,
+              request.articleContent?.keyPoints || request.newsItem.keyPoints || [],
+              segmentIndex,
+              segmentCount
+            );
+
+            const videoResult = await falAiService.generateNewsVideo(
+              request.productImageUrl,
+              segmentPrompts.title,
+              segmentPrompts.description,
+              segmentPrompts.keyPoints,
+              platform,
+              falBrandContext
+            );
+
+            videoSegments.push(videoResult.videoUrl);
+
+            // Use the composite image from the first segment
+            if (segmentIndex === 0) {
+              compositeImageUrl = videoResult.compositeImageUrl;
+            }
+          }
+
+          let finalVideoUrl: string;
+
+          // If single segment, use directly; if multiple, we'll need to combine them
+          if (videoSegments.length === 1) {
+            finalVideoUrl = videoSegments[0];
+          } else {
+            console.log(`🔗 Combining ${videoSegments.length} video segments...`);
+
+            try {
+              // Call Python video combination service
+              const combinationResponse = await fetch('http://localhost:8000/api/video/combine', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  segment_urls: videoSegments,
+                  transition_type: 'concatenate', // Can be 'concatenate', 'crossfade', or 'fade'
+                  fade_duration: 0.5
+                }),
+              });
+
+              if (!combinationResponse.ok) {
+                throw new Error(`Video combination failed: ${combinationResponse.statusText}`);
+              }
+
+              const combinationData = await combinationResponse.json();
+              finalVideoUrl = combinationData.video_path;
+
+              console.log(`✅ Video segments combined successfully: ${finalVideoUrl}`);
+            } catch (error) {
+              console.error('❌ Video combination failed, using first segment as fallback:', error);
+              finalVideoUrl = videoSegments[0];
+            }
+          }
 
           const processingTime = Date.now() - startTime;
 
-          console.log(`✅ Video generated for ${platform} in ${processingTime}ms`);
+          console.log(`✅ Video (${segmentCount} segment${segmentCount > 1 ? 's' : ''}) generated for ${platform} in ${processingTime}ms`);
 
           // Store video in our storage system
-          const storedVideoUrl = await this.storeVideo(videoResult.videoUrl, `${platform}-video-${Date.now()}.mp4`, {
+          const storedVideoUrl = await this.storeVideo(finalVideoUrl, `${platform}-video-${Date.now()}.mp4`, {
             platform,
-            duration: '8s',
+            duration: `${requestedDuration}s`,
             aspectRatio: this.getVideoAspectRatioForPlatform(platform)
           });
-          const storedCompositeUrl = await this.storeImage(videoResult.compositeImageUrl, `${platform}-composite-${Date.now()}.jpg`);
+          const storedCompositeUrl = await this.storeImage(compositeImageUrl, `${platform}-composite-${Date.now()}.jpg`);
 
           // Calculate brand compliance
           const brandCompliance = brandContext
@@ -555,6 +621,59 @@ class ContentGenerationService {
   /**
    * Get video aspect ratio for platform
    */
+  /**
+   * Generate varied prompts for video segments to create dynamic content
+   */
+  private generateSegmentPrompts(
+    title: string,
+    description: string,
+    keyPoints: string[],
+    segmentIndex: number,
+    totalSegments: number
+  ): { title: string; description: string; keyPoints: string[] } {
+    const segmentTypes = [
+      'introduction', 'development', 'highlight', 'conclusion'
+    ];
+
+    const segmentType = segmentTypes[segmentIndex % segmentTypes.length];
+
+    let segmentTitle = title;
+    let segmentDescription = description;
+    let segmentKeyPoints = keyPoints;
+
+    switch (segmentType) {
+      case 'introduction':
+        segmentTitle = `Introduction: ${title}`;
+        segmentDescription = `Opening segment introducing: ${description}`;
+        segmentKeyPoints = keyPoints.slice(0, Math.max(1, Math.floor(keyPoints.length / 2)));
+        break;
+
+      case 'development':
+        segmentTitle = `Deep Dive: ${title}`;
+        segmentDescription = `Exploring the details of ${description}`;
+        segmentKeyPoints = keyPoints.slice(Math.floor(keyPoints.length / 3));
+        break;
+
+      case 'highlight':
+        segmentTitle = `Key Insights: ${title}`;
+        segmentDescription = `Highlighting important aspects of ${description}`;
+        segmentKeyPoints = keyPoints.slice(-Math.max(1, Math.floor(keyPoints.length / 2)));
+        break;
+
+      case 'conclusion':
+        segmentTitle = `Wrap-up: ${title}`;
+        segmentDescription = `Concluding thoughts on ${description}`;
+        segmentKeyPoints = keyPoints.length > 0 ? [keyPoints[keyPoints.length - 1]] : [];
+        break;
+    }
+
+    return {
+      title: segmentTitle,
+      description: segmentDescription,
+      keyPoints: segmentKeyPoints
+    };
+  }
+
   private getVideoAspectRatioForPlatform(platform: SocialPlatform): '16:9' | '9:16' | 'auto' {
     const ratios = {
       instagram: '9:16' as const, // Stories/Reels format

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { GeneratedContent, EmailContent, SocialPlatform } from '../types';
+import { GeneratedContent, EmailContent, SocialPlatform, SocialContentResult, PublishPlatform, PublishOptions } from '../types';
 import { brandService } from '../services/brandService';
+import { composioService } from '../services/composioService';
 import Icon from './Icon';
 
 interface GeneratedContentViewerProps {
@@ -9,6 +10,9 @@ interface GeneratedContentViewerProps {
   onRegenerateContent?: (contentId: string) => void;
   onCopyContent?: (content: string) => void;
   onSaveToLibrary?: (content: GeneratedContent) => void;
+  onOpenVideoViewer?: (videoData: SocialContentResult) => void;
+  onPublishContent?: (content: GeneratedContent, platform: PublishPlatform) => void;
+  addNotification?: (message: string, type?: 'success' | 'error') => void;
   isGenerating?: boolean;
 }
 
@@ -18,12 +22,16 @@ const GeneratedContentViewer: React.FC<GeneratedContentViewerProps> = ({
   onRegenerateContent,
   onCopyContent,
   onSaveToLibrary,
+  onOpenVideoViewer,
+  onPublishContent,
+  addNotification,
   isGenerating = false
 }) => {
   const [activeTab, setActiveTab] = useState<'social_post' | 'email' | 'article' | 'all'>('all');
   const [selectedContent, setSelectedContent] = useState<GeneratedContent | null>(null);
   const [editingContent, setEditingContent] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [isPublishing, setIsPublishing] = useState<Map<string, boolean>>(new Map());
 
   const filteredContent = content.filter(item =>
     activeTab === 'all' || item.type === activeTab
@@ -101,6 +109,58 @@ const GeneratedContentViewer: React.FC<GeneratedContentViewerProps> = ({
     navigator.clipboard.writeText(text);
     if (onCopyContent) {
       onCopyContent(text);
+    }
+  };
+
+  const handlePublish = async (contentItem: GeneratedContent, platform: PublishPlatform) => {
+    if (!composioService.isAvailable()) {
+      addNotification?.('Publishing service not available. Please check your Composio configuration.', 'error');
+      return;
+    }
+
+    const contentId = `${contentItem.id}_${platform}`;
+    setIsPublishing(prev => new Map(prev.set(contentId, true)));
+
+    try {
+      if (onPublishContent) {
+        await onPublishContent(contentItem, platform);
+      } else {
+        // Fallback to direct publishing if no handler provided
+        const connectionStatus = composioService.getConnectionStatus(platform);
+        if (!connectionStatus.connected) {
+          addNotification?.(`Connecting to ${platform}...`, 'success');
+          const connection = await composioService.initiateConnection(platform);
+          if (connection.redirectUrl) {
+            window.open(connection.redirectUrl, '_blank', 'width=600,height=600');
+            addNotification?.(`Please authorize the connection in the new window, then try publishing again.`, 'success');
+            return;
+          }
+        }
+
+        const publishOptions: PublishOptions = {
+          platform,
+          content: contentItem.content,
+          title: contentItem.title,
+          hashtags: contentItem.hashtags,
+          images: contentItem.images
+        };
+
+        const result = await composioService.publishContent(publishOptions);
+        if (result.success) {
+          addNotification?.(`Successfully published to ${platform}!`, 'success');
+        } else {
+          addNotification?.(`Failed to publish to ${platform}: ${result.error}`, 'error');
+        }
+      }
+    } catch (error) {
+      console.error(`Publishing error for ${platform}:`, error);
+      addNotification?.(`Failed to publish to ${platform}: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+    } finally {
+      setIsPublishing(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(contentId);
+        return newMap;
+      });
     }
   };
 
@@ -260,6 +320,44 @@ const GeneratedContentViewer: React.FC<GeneratedContentViewerProps> = ({
                   >
                     <Icon icon="bookmark" className="w-4 h-4" />
                   </button>
+                )}
+
+                {/* Publishing buttons */}
+                {composioService.isAvailable() && (
+                  <>
+                    <button
+                      onClick={() => handlePublish(contentItem, 'linkedin')}
+                      disabled={isPublishing.get(`${contentItem.id}_linkedin`)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isPublishing.get(`${contentItem.id}_linkedin`)
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-blue-600 hover:bg-blue-50'
+                      }`}
+                      title="Publish to LinkedIn"
+                    >
+                      {isPublishing.get(`${contentItem.id}_linkedin`) ? (
+                        <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                      ) : (
+                        <Icon icon="briefcase" className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handlePublish(contentItem, 'email')}
+                      disabled={isPublishing.get(`${contentItem.id}_email`)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isPublishing.get(`${contentItem.id}_email`)
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-green-600 hover:bg-green-50'
+                      }`}
+                      title="Send via Email"
+                    >
+                      {isPublishing.get(`${contentItem.id}_email`) ? (
+                        <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                      ) : (
+                        <Icon icon="mail" className="w-4 h-4" />
+                      )}
+                    </button>
+                  </>
                 )}
               </div>
             </div>

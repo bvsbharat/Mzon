@@ -14,12 +14,14 @@ import NewsHub from './views/NewsHub';
 import ContentCreator from './views/ContentCreatorEnhanced';
 import VideoCreator from './components/VideoCreator';
 import SocialScheduler from './views/SocialScheduler';
+import VideoViewer from './views/VideoViewer';
 import ProtectedRoute from './components/ProtectedRoute';
 // FIX: Moved View and ComposerGenContext to types.ts to resolve a circular dependency.
-import { GalleryImage, View, ComposerGenContext, NewsContentWorkflow, NewsItem, MediaType } from './types';
+import { GalleryImage, View, ComposerGenContext, NewsContentWorkflow, NewsItem, MediaType, SocialContentResult } from './types';
 import NotificationHost, { Notification } from './components/NotificationHost';
 import WelcomeModal from './components/WelcomeModal';
 import CompletionModal from './components/CompletionModal';
+import ResultsModal from './components/ResultsModal';
 import StorageStatus from './components/StorageStatus';
 import { storageService, ImageMetadata } from './services/storageService';
 import { localStorageService } from './services/localStorageService';
@@ -36,6 +38,7 @@ const VIEW_TITLES: Record<View, string> = {
   newsHub: 'Latest News',
   contentCreator: 'Content Creator',
   socialScheduler: 'Social Scheduler',
+  videoViewer: 'Video Viewer',
 };
 
 const App: React.FC = () => {
@@ -56,6 +59,12 @@ const App: React.FC = () => {
   const [composedImageUrl, setComposedImageUrl] = React.useState<string | null>(null);
   const [editedImageUrl, setEditedImageUrl] = React.useState<string | null>(null);
   const [campaignCreatives, setCampaignCreatives] = React.useState<Creative[]>([]);
+  const [viewerVideoData, setViewerVideoData] = React.useState<SocialContentResult | null>(null);
+
+  // Results state
+  const [currentResults, setCurrentResults] = React.useState<SocialContentResult[]>([]);
+  const [previousResults, setPreviousResults] = React.useState<SocialContentResult[]>([]);
+  const [isResultsModalOpen, setIsResultsModalOpen] = React.useState(false);
 
   // State for onboarding flow
   const [onboardingActive, setOnboardingActive] = React.useState(false);
@@ -383,21 +392,11 @@ const App: React.FC = () => {
     setShowCompletionModal(true);
   };
 
-  // News workflow handlers
+  // News workflow handlers - simplified since SocialContentPanel handles the workflow now
   const handleNewsSelected = (newsItem: NewsItem) => {
-    setNewsWorkflow(prev => ({
-      ...prev,
-      selectedNewsItem: newsItem,
-      step: 'media_type_selection',
-      generatedAssets: {
-        images: [],
-        videos: [],
-        text: newsItem.description,
-        hashtags: newsItem.hashtags
-      }
-    }));
-    setActiveView('contentCreator');
-    addNotification(`Selected "${newsItem.title}" for content creation`);
+    // This is kept for backwards compatibility but the new workflow uses SocialContentPanel directly from NewsHub
+    console.log('News item selected (legacy handler):', newsItem.title);
+    addNotification(`"${newsItem.title}" - Use the new 📱 Create Content button for streamlined content creation`);
   };
 
   const handleMediaTypeSelected = (mediaType: MediaType) => {
@@ -453,6 +452,40 @@ const App: React.FC = () => {
       addNotification('Video generated successfully!');
       setActiveView('contentCreator');
     }, 3000);
+  };
+
+  const handleOpenVideoViewer = (videoData: SocialContentResult) => {
+    setViewerVideoData(videoData);
+    setActiveView('videoViewer');
+  };
+
+  const handleCloseVideoViewer = () => {
+    setViewerVideoData(null);
+    setActiveView('contentCreator');
+  };
+
+  const handleAddResult = (result: SocialContentResult) => {
+    setCurrentResults(prev => [result, ...prev]);
+
+    // Automatically open results modal when new content is generated
+    setIsResultsModalOpen(true);
+
+    // Add notification
+    addNotification(`${result.platform} content generated successfully!`, 'success');
+  };
+
+  const handleClearCurrentResults = () => {
+    // Move current results to history
+    setPreviousResults(prev => [...currentResults, ...prev]);
+    setCurrentResults([]);
+  };
+
+  const handleOpenResultsModal = () => {
+    setIsResultsModalOpen(true);
+  };
+
+  const handleCloseResultsModal = () => {
+    setIsResultsModalOpen(false);
   };
 
 
@@ -563,6 +596,9 @@ const App: React.FC = () => {
                     onNavigate={handleNavigate}
                     onNewsSelected={handleNewsSelected}
                     addNotification={addNotification}
+                    galleryImages={galleryImages}
+                    onAddToLibrary={addImageToLibrary}
+                    onAddResult={handleAddResult}
                   />;
       case 'contentCreator':
           // Show VideoCreator when in video content generation step
@@ -583,11 +619,20 @@ const App: React.FC = () => {
                     newsWorkflow={newsWorkflow}
                     onMediaTypeSelected={handleMediaTypeSelected}
                     onWorkflowReset={handleWorkflowReset}
+                    onOpenVideoViewer={handleOpenVideoViewer}
+                    onAddResult={handleAddResult}
+                    onOpenResultsModal={handleOpenResultsModal}
                   />;
       case 'socialScheduler':
           return <SocialScheduler
                     onNavigate={handleNavigate}
                     addNotification={addNotification}
+                  />;
+      case 'videoViewer':
+          return <VideoViewer
+                    onNavigate={handleNavigate}
+                    videoData={viewerVideoData}
+                    onClose={handleCloseVideoViewer}
                   />;
       default:
         return <PhotoStudio 
@@ -629,6 +674,16 @@ const App: React.FC = () => {
 
         <NotificationHost notifications={notifications} onRemoveNotification={removeNotification} />
         <StorageStatus galleryImageCount={galleryImages.length} />
+
+        {/* Results Modal */}
+        <ResultsModal
+          isOpen={isResultsModalOpen}
+          onClose={handleCloseResultsModal}
+          currentResults={currentResults}
+          previousResults={previousResults}
+          onOpenVideoViewer={handleOpenVideoViewer}
+          addNotification={addNotification}
+        />
 
         {/* {onboardingActive && onboardingStep === 0 && (
           <WelcomeModal onStart={handleStartOnboarding} onSkip={handleSkipOnboarding} />

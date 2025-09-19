@@ -94,7 +94,7 @@ export default function ShaderShowcase({ onSwitchToLogin, onSwitchToSignup }: Sh
         className="absolute inset-0 w-full h-full opacity-40"
         colors={["#4c1d95", "#ffffff", "#7c3aed", "#a855f7"]}
         speed={0.2}
-        wireframe="true"
+        wireframe={true}
         backgroundColor="transparent"
       />
 

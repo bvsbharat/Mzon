@@ -17,7 +17,7 @@ export type GalleryImage = {
 };
 
 // FIX: Moved View and ComposerGenContext types here from App.tsx to resolve circular dependencies.
-export type View = 'photo' | 'variation' | 'composer' | 'edit' | 'library' | 'imageGenerator' | 'campaign' | 'platform' | 'newsHub' | 'contentCreator' | 'socialScheduler';
+export type View = 'photo' | 'variation' | 'composer' | 'edit' | 'library' | 'imageGenerator' | 'campaign' | 'platform' | 'newsHub' | 'contentCreator' | 'socialScheduler' | 'videoViewer';
 export type ComposerGenContext = { targetSlot: number } | null;
 
 // News and Content types
@@ -434,4 +434,64 @@ export interface ContentGenerationSettings {
   includeEmojis: boolean;
   includeCallToAction: boolean;
   maxLength?: number;
+}
+
+// Composio Publishing Types
+export type PublishPlatform = 'linkedin' | 'email';
+
+export interface PublishOptions {
+  platform: PublishPlatform;
+  content: string;
+  title?: string;
+  images?: string[];
+  hashtags?: string[];
+  // LinkedIn specific
+  visibility?: 'public' | 'connections' | 'logged-in';
+  // Email specific
+  recipients?: string[];
+  subject?: string;
+}
+
+export interface PublishResult {
+  success: boolean;
+  platform: PublishPlatform;
+  publishedId?: string;
+  publishedUrl?: string;
+  error?: string;
+  timestamp: number;
+}
+
+export interface ComposioConnectionStatus {
+  platform: PublishPlatform;
+  connected: boolean;
+  connectedAccountId?: string;
+  connectionUrl?: string;
+  lastChecked: number;
+}
+
+export interface ComposioConnection {
+  id: string;
+  platform: PublishPlatform;
+  status: 'connected' | 'disconnected' | 'pending';
+  accountInfo?: {
+    name?: string;
+    email?: string;
+    profileUrl?: string;
+  };
+  connectedAt?: number;
+  redirectUrl?: string;
+}
+
+export interface PublishHistoryItem {
+  id: string;
+  contentId: string;
+  platform: PublishPlatform;
+  publishedAt: number;
+  publishResult: PublishResult;
+  content: {
+    text: string;
+    title?: string;
+    hashtags: string[];
+    images: string[];
+  };
 }

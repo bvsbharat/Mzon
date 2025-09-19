@@ -58,6 +58,50 @@ export interface Veo3VideoResponse {
   };
 }
 
+export interface FalApiError {
+  detail: Array<{
+    loc: string[];
+    msg: string;
+    type: string;
+    url?: string;
+    ctx?: {
+      support_codes?: string[];
+    };
+    input?: string;
+  }>;
+}
+
+export class ContentPolicyViolationError extends Error {
+  public readonly supportCodes: string[];
+  public readonly violatingInput: string;
+  public readonly documentationUrl: string;
+
+  constructor(errorDetail: FalApiError['detail'][0]) {
+    const message = `Content policy violation: ${errorDetail.msg}`;
+    super(message);
+    this.name = 'ContentPolicyViolationError';
+    this.supportCodes = errorDetail.ctx?.support_codes || [];
+    this.violatingInput = errorDetail.input || '';
+    this.documentationUrl = errorDetail.url || 'https://docs.fal.ai/errors#content_policy_violation';
+  }
+
+  getUserFriendlyMessage(): string {
+    return `The image you're trying to process contains content that violates FAL.AI's content policy. This could be due to inappropriate content, copyrighted material, or other policy restrictions. Please try with a different image.`;
+  }
+
+  getDetailedMessage(): string {
+    let message = this.getUserFriendlyMessage();
+    if (this.supportCodes.length > 0) {
+      message += `\n\nSupport codes: ${this.supportCodes.join(', ')}`;
+    }
+    if (this.violatingInput) {
+      message += `\n\nViolating input: ${this.violatingInput}`;
+    }
+    message += `\n\nFor more information, visit: ${this.documentationUrl}`;
+    return message;
+  }
+}
+
 export interface CompositeImageConfig {
   productImageUrl: string;
   newsTitle: string;
@@ -144,15 +188,18 @@ News Description: ${config.newsDescription}`;
         output_format: 'jpeg'
       };
 
-      const response = await fal.subscribe('fal-ai/nano-banana/edit', {
-        input: request,
-        logs: true,
-        onQueueUpdate: (update) => {
-          if (update.status === "IN_PROGRESS" && update.logs) {
-            update.logs.forEach(log => console.log('Nano Banana:', log.message));
-          }
-        },
-      }) as { data: NanoBananaResponse };
+      // Try with retry logic and exponential backoff
+      const response = await this.retryWithBackoff(
+        () => fal.subscribe('fal-ai/nano-banana/edit', {
+          input: request,
+          logs: true,
+          onQueueUpdate: (update) => {
+            if (update.status === "IN_PROGRESS" && update.logs) {
+              update.logs.forEach(log => console.log('Nano Banana:', log.message));
+            }
+          },
+        })
+      ) as { data: NanoBananaResponse };
 
       console.log('✅ Nano Banana response:', response);
 
@@ -171,6 +218,18 @@ News Description: ${config.newsDescription}`;
 
     } catch (error) {
       console.error('❌ Composite image generation failed:', error);
+
+      // Handle content policy violations with user-friendly message
+      if (error instanceof ContentPolicyViolationError) {
+        console.error('🚫 Content policy violation:', error.getDetailedMessage());
+        throw error; // Re-throw to preserve the specific error type
+      }
+
+      // If SSL error, provide helpful message
+      if (error instanceof Error && error.message.includes('ERR_SSL_BAD_RECORD_MAC_ALERT')) {
+        throw new Error('SSL connection error with FAL AI service. This may be a temporary network issue. Please try again in a moment.');
+      }
+
       throw new Error(`Failed to generate composite image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -201,15 +260,17 @@ News Description: ${config.newsDescription}`;
         resolution: '720p'
       };
 
-      const response = await fal.subscribe('fal-ai/veo3/fast/image-to-video', {
-        input: request,
-        logs: true,
-        onQueueUpdate: (update) => {
-          if (update.status === "IN_PROGRESS" && update.logs) {
-            update.logs.forEach(log => console.log('Veo 3 Fast:', log.message));
-          }
-        },
-      }) as { data: Veo3VideoResponse };
+      const response = await this.retryWithBackoff(
+        () => fal.subscribe('fal-ai/veo3/fast/image-to-video', {
+          input: request,
+          logs: true,
+          onQueueUpdate: (update) => {
+            if (update.status === "IN_PROGRESS" && update.logs) {
+              update.logs.forEach(log => console.log('Veo 3 Fast:', log.message));
+            }
+          },
+        })
+      ) as { data: Veo3VideoResponse };
 
       console.log('✅ Veo 3 Fast response:', response);
 
@@ -224,6 +285,18 @@ News Description: ${config.newsDescription}`;
 
     } catch (error) {
       console.error('❌ Video generation failed:', error);
+
+      // Handle content policy violations with user-friendly message
+      if (error instanceof ContentPolicyViolationError) {
+        console.error('🚫 Content policy violation:', error.getDetailedMessage());
+        throw error; // Re-throw to preserve the specific error type
+      }
+
+      // If SSL error, provide helpful message
+      if (error instanceof Error && error.message.includes('ERR_SSL_BAD_RECORD_MAC_ALERT')) {
+        throw new Error('SSL connection error with FAL AI video service. This may be a temporary network issue. Please try again in a moment.');
+      }
+
       throw new Error(`Failed to generate video: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -361,6 +434,94 @@ News Description: ${config.newsDescription}`;
       console.error('❌ Data URL upload failed:', error);
       throw new Error(`Failed to upload data URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Parse FAL API error response and throw appropriate error types
+   */
+  private handleFalApiError(error: any): never {
+    // Check if it's a FAL API error response
+    if (error && typeof error === 'object' && error.detail && Array.isArray(error.detail)) {
+      const errorDetail = error.detail[0];
+      
+      // Handle content policy violations
+      if (errorDetail.type === 'content_policy_violation') {
+        throw new ContentPolicyViolationError(errorDetail);
+      }
+      
+      // Handle other FAL API errors
+      const message = errorDetail.msg || 'Unknown FAL API error';
+      const apiError = new Error(`FAL API Error: ${message}`);
+      apiError.name = 'FalApiError';
+      throw apiError;
+    }
+    
+    // Re-throw if it's not a FAL API error
+    throw error;
+  }
+
+  /**
+   * Retry logic with exponential backoff for handling SSL and network issues
+   * Content policy violations are not retried as they are permanent failures
+   */
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt + 1}/${maxRetries}...`);
+        return await operation();
+      } catch (error) {
+        // Handle FAL API errors first
+        try {
+          this.handleFalApiError(error);
+        } catch (handledError) {
+          // If it's a content policy violation, don't retry
+          if (handledError instanceof ContentPolicyViolationError) {
+            console.error('🚫 Content policy violation detected - not retrying');
+            throw handledError;
+          }
+          // For other FAL API errors, continue with retry logic
+          lastError = handledError;
+        }
+
+        lastError = error as Error;
+        console.warn(`⚠️ Attempt ${attempt + 1} failed:`, error);
+
+        // Check if it's an SSL error or network issue
+        if (error instanceof Error && (
+          error.message.includes('ERR_SSL_BAD_RECORD_MAC_ALERT') ||
+          error.message.includes('net::ERR_') ||
+          error.message.includes('fetch')
+        )) {
+          console.log('🔒 Network/SSL error detected, waiting before retry...');
+
+          // Exponential backoff with jitter
+          const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+          await this.sleep(delay);
+          continue;
+        }
+
+        // For other errors, wait less time
+        if (attempt < maxRetries - 1) {
+          await this.sleep(baseDelay * (attempt + 1));
+        }
+      }
+    }
+
+    // If all retries failed, throw the last error
+    throw lastError || new Error('All retry attempts failed');
+  }
+
+  /**
+   * Sleep utility for retry delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

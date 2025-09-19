@@ -1,5 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import asyncio
 import json
@@ -13,11 +14,17 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from dotenv import load_dotenv
 import logging
 import random
+import aiohttp
 from database_service import db_service
+from video_combination_service import video_combination_service
+from routes.s3_routes import router as s3_router
 
 load_dotenv()
 
 app = FastAPI(title="Event Hunter API", description="AI-powered event discovery service")
+
+# Include S3 proxy routes
+app.include_router(s3_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,6 +58,30 @@ class NewsStats(BaseModel):
     total_social_posts: int
     active_sessions: int
     last_updated: str
+
+class VideoCombinationRequest(BaseModel):
+    segment_urls: List[str]
+    output_filename: Optional[str] = None
+    transition_type: str = "concatenate"  # "concatenate", "crossfade", "fade"
+    fade_duration: float = 0.5
+
+class VideoCombinationResponse(BaseModel):
+    status: str
+    video_path: str
+    duration: Optional[float] = None
+    message: str
+
+class VideoGenerationRequest(BaseModel):
+    productData: dict
+    avatar: dict
+    configuration: dict
+    script: dict
+    selectedImageUrls: List[str]
+
+class VideoGenerationResponse(BaseModel):
+    success: bool
+    videoUrl: Optional[str] = None
+    error: Optional[str] = None
 
 # Mock news data for fallback
 def generate_mock_news_data(category: Optional[str] = None, limit: int = 50) -> List[dict]:
@@ -721,6 +752,110 @@ async def search_news(
         logger.error(f"Error searching news: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to search news: {str(e)}")
 
+@app.get("/api/proxy-image")
+async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
+    """Proxy image requests to handle CORS and accessibility issues"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=response.status, detail=f"Failed to fetch image: {response.status}")
+                
+                content_type = response.headers.get('content-type', 'image/jpeg')
+                content = await response.read()
+                
+                return StreamingResponse(
+                    iter([content]),
+                    media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+    except Exception as e:
+        logger.error(f"Error proxying image {url}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to proxy image: {str(e)}")
+
+async def validate_image_url(url: str) -> bool:
+    """Validate if an image URL is accessible"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with session.head(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                return response.status == 200 and 'image' in response.headers.get('content-type', '')
+    except Exception as e:
+        logger.warning(f"Image validation failed for {url}: {e}")
+        return False
+
+def preprocess_amazon_url(url: str) -> str:
+    """Preprocess Amazon image URLs for better compatibility"""
+    if 'amazon' not in url:
+        return url
+    
+    # Convert WebP format to JPEG for better compatibility
+    if '__AC_SX300_SY300_QL70_FMwebp_' in url:
+        return url.replace('__AC_SX300_SY300_QL70_FMwebp_', '_AC_SL1500_')
+    
+    # Try to get a larger, more standard format
+    import re
+    return re.sub(r'\._AC_[^.]*\.', '._AC_SL1500_.', url)
+
+@app.post("/api/generate-video")
+async def generate_video(request: VideoGenerationRequest) -> VideoGenerationResponse:
+    """Generate video from product data and configuration"""
+    try:
+        logger.info(f"Received video generation request for product: {request.productData.get('title', 'Unknown')}")
+        
+        # Validate product image URL
+        product_image_url = request.productData.get('imageUrl')
+        if not product_image_url:
+            return VideoGenerationResponse(
+                success=False,
+                error="Product image URL is required"
+            )
+        
+        # Preprocess Amazon URLs
+        processed_url = preprocess_amazon_url(product_image_url)
+        
+        # Validate image accessibility
+        is_valid = await validate_image_url(processed_url)
+        if not is_valid:
+            # Try original URL if processed version fails
+            if processed_url != product_image_url:
+                is_valid = await validate_image_url(product_image_url)
+                if is_valid:
+                    processed_url = product_image_url
+        
+        if not is_valid:
+            return VideoGenerationResponse(
+                success=False,
+                error="Could not process the product image. Please ensure the image URL is valid and accessible."
+            )
+        
+        # TODO: Implement actual video generation logic here
+        # For now, return a mock response
+        logger.info(f"Video generation would proceed with image: {processed_url}")
+        
+        # Mock video generation delay
+        await asyncio.sleep(2)
+        
+        return VideoGenerationResponse(
+            success=True,
+            videoUrl="https://example.com/generated-video.mp4",
+            error=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Video generation failed: {e}")
+        return VideoGenerationResponse(
+            success=False,
+            error=f"Video generation failed: {str(e)}"
+        )
+
 @app.get("/api/news/stats")
 async def get_news_stats():
     """Get news statistics"""
@@ -1013,6 +1148,55 @@ async def get_database_stats():
         logger.error(f"Failed to get database stats: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+@app.post("/api/video/combine", response_model=VideoCombinationResponse)
+async def combine_video_segments(request: VideoCombinationRequest):
+    """
+    Combine multiple video segments into a single video with transitions
+    """
+    try:
+        logger.info(f"🎬 Starting video combination for {len(request.segment_urls)} segments")
+
+        if not request.segment_urls:
+            raise HTTPException(status_code=400, detail="No video segments provided")
+
+        # Call the video combination service
+        combined_video_path = await video_combination_service.combine_video_segments(
+            segment_urls=request.segment_urls,
+            output_filename=request.output_filename,
+            transition_type=request.transition_type,
+            fade_duration=request.fade_duration
+        )
+
+        # Get video duration for response (optional)
+        duration = None
+        try:
+            import ffmpeg
+            probe = ffmpeg.probe(combined_video_path)
+            duration = float(probe['streams'][0]['duration'])
+        except Exception as probe_error:
+            logger.warning(f"Could not probe video duration: {probe_error}")
+
+        logger.info(f"✅ Video combination completed: {combined_video_path}")
+
+        return VideoCombinationResponse(
+            status="success",
+            video_path=combined_video_path,
+            duration=duration,
+            message=f"Successfully combined {len(request.segment_urls)} video segments"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Video combination failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Video combination failed: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    # Use port 3000 to match frontend expectations
+    port = int(os.getenv("PORT", 3000))
+    host = os.getenv("HOST", "0.0.0.0")
+    
+    logger.info(f"🚀 Starting Event Hunter API on {host}:{port}")
+    uvicorn.run(app, host=host, port=port, reload=True)

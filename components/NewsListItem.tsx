@@ -6,7 +6,7 @@ import Icon from './Icon';
 
 interface NewsListItemProps {
   newsItem: NewsItem;
-  onGenerateContent: (newsItem: NewsItem) => void;
+  onCreateContent: (newsItem: NewsItem) => void;
   onReadArticle: (url: string) => void;
   onFetchContent?: (newsItem: NewsItem, content: ArticleContent) => void;
   onSchedulePost?: (newsItem: NewsItem) => void;
@@ -14,7 +14,7 @@ interface NewsListItemProps {
 
 const NewsListItem: React.FC<NewsListItemProps> = ({
   newsItem,
-  onGenerateContent,
+  onCreateContent,
   onReadArticle,
   onFetchContent,
   onSchedulePost
@@ -79,7 +79,7 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
     }
   };
 
-  const handleGenerateWithContent = () => {
+  const handleCreateContent = () => {
     if (fetchedContent) {
       // Create enhanced news item with content
       const enhancedNewsItem = {
@@ -88,9 +88,9 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
         summary: fetchedContent.summary,
         keyPoints: fetchedContent.keyPoints
       };
-      onGenerateContent(enhancedNewsItem);
+      onCreateContent(enhancedNewsItem);
     } else {
-      onGenerateContent(newsItem);
+      onCreateContent(newsItem);
     }
   };
 
@@ -254,11 +254,11 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
               {/* Action Buttons */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={handleGenerateWithContent}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                  onClick={handleCreateContent}
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition-colors flex items-center gap-2 shadow-lg"
                 >
-                  <Icon icon="image" className="w-4 h-4" />
-                  {fetchedContent ? 'Generate Content' : 'Generate Content'}
+                  <Icon icon="megaphone" className="w-4 h-4" />
+                  📱 Create Content
                 </button>
 
                 <button

@@ -9,7 +9,11 @@ import {
   GeneratedContent,
   EmailContent,
   VideoContent,
-  BrandConfiguration
+  BrandConfiguration,
+  SocialContentResult,
+  PublishPlatform,
+  PublishOptions,
+  PublishResult
 } from '../types';
 import {
   contentGenerationService,
@@ -17,7 +21,8 @@ import {
 } from '../services/contentGenerationService';
 import { brandService } from '../services/brandService';
 import { articleContentService, ArticleContent } from '../services/articleContentService';
-import { falAiService } from '../services/falAiService';
+import { falAiService, ContentPolicyViolationError } from '../services/falAiService';
+import { composioService } from '../services/composioService';
 import Icon from '../components/Icon';
 import MediaTypeSelector from '../components/MediaTypeSelector';
 import GeneratedContentViewer from '../components/GeneratedContentViewer';
@@ -31,6 +36,9 @@ interface ContentCreatorEnhancedProps {
   newsWorkflow?: NewsContentWorkflow;
   onMediaTypeSelected?: (mediaType: MediaType) => void;
   onWorkflowReset?: () => void;
+  onOpenVideoViewer?: (videoData: SocialContentResult) => void;
+  onAddResult?: (result: SocialContentResult) => void;
+  onOpenResultsModal?: () => void;
 }
 
 const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
@@ -39,7 +47,10 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
   addNotification,
   newsWorkflow,
   onMediaTypeSelected,
-  onWorkflowReset
+  onWorkflowReset,
+  onOpenVideoViewer,
+  onAddResult,
+  onOpenResultsModal
 }) => {
   const [activeTab, setActiveTab] = useState<'generator' | 'projects' | 'library'>('generator');
   const [projects, setProjects] = useState<ContentProject[]>([]);
@@ -66,6 +77,32 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
   // Brand configuration
   const [brandConfig, setBrandConfig] = useState<BrandConfiguration | null>(null);
   const [showBrandModal, setShowBrandModal] = useState(false);
+
+  // Publishing state
+  const [isPublishing, setIsPublishing] = useState<Map<string, boolean>>(new Map());
+  const [publishResults, setPublishResults] = useState<PublishResult[]>([]);
+
+  // Test function to demonstrate results modal with mock data
+  const handleTestResults = () => {
+    if (onAddResult) {
+      const mockResult: SocialContentResult = {
+        id: `mock-${Date.now()}`,
+        platform: 'facebook' as any,
+        title: 'Test Video Content',
+        description: 'This is a test video generated for Facebook with the new enhanced system.',
+        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        thumbnailUrl: 'https://picsum.photos/400/600?random=1',
+        duration: '16s',
+        hasAudio: true,
+        estimatedEngagement: 85,
+        hashtags: ['testVideo', 'AI', 'content', 'facebook'],
+        timestamp: Date.now(),
+        compositeImageUrl: 'https://picsum.photos/400/600?random=2'
+      };
+
+      onAddResult(mockResult);
+    }
+  };
 
   // Article content
   const [articleContent, setArticleContent] = useState<ArticleContent | null>(null);
@@ -219,6 +256,58 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
     onNavigate('newsHub');
   };
 
+  const handlePublishContent = async (
+    content: VideoContent | GeneratedContent,
+    platform: PublishPlatform
+  ) => {
+    if (!composioService.isAvailable()) {
+      addNotification?.('Publishing service not available. Please check your Composio configuration.', 'error');
+      return;
+    }
+
+    const contentId = `${content.id}_${platform}`;
+
+    // Set publishing state
+    setIsPublishing(prev => new Map(prev.set(contentId, true)));
+
+    try {
+      // Prepare publish options
+      const publishOptions: PublishOptions = {
+        platform,
+        content: content.content,
+        title: content.title || (newsWorkflow?.selectedNewsItem?.title),
+        hashtags: content.hashtags || [],
+        images: content.images || []
+      };
+
+      // For video content, we might want to include the video URL
+      if ('videoUrl' in content) {
+        publishOptions.content += `\n\nWatch the full video: ${content.videoUrl}`;
+      }
+
+      // Publish content
+      const result = await composioService.publishContent(publishOptions);
+
+      if (result.success) {
+        addNotification?.(`Successfully published to ${platform}!`, 'success');
+        setPublishResults(prev => [result, ...prev]);
+      } else {
+        addNotification?.(`Failed to publish to ${platform}: ${result.error}`, 'error');
+      }
+
+    } catch (error) {
+      console.error(`Publishing error for ${platform}:`, error);
+      addNotification?.(`Failed to publish to ${platform}: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+    } finally {
+      // Clear publishing state
+      setIsPublishing(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(contentId);
+        return newMap;
+      });
+    }
+  };
+
   const handleProductImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -274,7 +363,13 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
 
     } catch (error) {
       console.error('❌ Composite image generation failed:', error);
-      addNotification?.(`Failed to generate composite image: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      
+      if (error instanceof ContentPolicyViolationError) {
+        addNotification?.(error.getUserFriendlyMessage(), 'error');
+        console.error('🚫 Content policy details:', error.getDetailedMessage());
+      } else {
+        addNotification?.(`Failed to generate composite image: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      }
     } finally {
       setIsGeneratingVideo(false);
     }
@@ -327,12 +422,19 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
           }
         });
       } else {
-        addNotification?.('No videos were generated. Please check the error messages.', 'error');
+        console.log('✅ Generated video:', videoUrl);
+        addNotification?.('Video generated successfully!', 'success');
       }
 
     } catch (error) {
       console.error('❌ Video generation failed:', error);
-      addNotification?.(`Video generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      
+      if (error instanceof ContentPolicyViolationError) {
+        addNotification?.(error.getUserFriendlyMessage(), 'error');
+        console.error('🚫 Content policy details:', error.getDetailedMessage());
+      } else {
+        addNotification?.(`Failed to generate video: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      }
     } finally {
       setIsGeneratingVideo(false);
     }
@@ -730,6 +832,9 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
                     // Implementation for saving to library
                     addNotification?.('Content saved to library!', 'success');
                   }}
+                  onOpenVideoViewer={onOpenVideoViewer}
+                  onPublishContent={handlePublishContent}
+                  addNotification={addNotification}
                 />
               </div>
 
@@ -800,6 +905,44 @@ const ContentCreatorEnhanced: React.FC<ContentCreatorEnhancedProps> = ({
                             >
                               <Icon icon="image" className="w-4 h-4" />
                             </button>
+
+                            {/* Publishing buttons */}
+                            {composioService.isAvailable() && (
+                              <>
+                                <button
+                                  onClick={() => handlePublishContent(video, 'linkedin')}
+                                  disabled={isPublishing.get(`${video.id}_linkedin`)}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    isPublishing.get(`${video.id}_linkedin`)
+                                      ? 'text-gray-400 cursor-not-allowed'
+                                      : 'text-blue-600 hover:bg-blue-100'
+                                  }`}
+                                  title="Publish to LinkedIn"
+                                >
+                                  {isPublishing.get(`${video.id}_linkedin`) ? (
+                                    <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                                  ) : (
+                                    <Icon icon="briefcase" className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handlePublishContent(video, 'email')}
+                                  disabled={isPublishing.get(`${video.id}_email`)}
+                                  className={`p-2 rounded-lg transition-colors ${
+                                    isPublishing.get(`${video.id}_email`)
+                                      ? 'text-gray-400 cursor-not-allowed'
+                                      : 'text-green-600 hover:bg-green-100'
+                                  }`}
+                                  title="Send via Email"
+                                >
+                                  {isPublishing.get(`${video.id}_email`) ? (
+                                    <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                                  ) : (
+                                    <Icon icon="mail" className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
 

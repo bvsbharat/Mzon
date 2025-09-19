@@ -8,9 +8,11 @@ export type IconName =
   | 'arrowLeftRight'
   | 'arrowPath'
   | 'bolt'
+  | 'briefcase'
   | 'brush'
   | 'camera'
   | 'check'
+  | 'copy'
   | 'checkCircle'
   | 'chevronsLeft'
   | 'chevronsRight'
@@ -26,10 +28,13 @@ export type IconName =
   | 'facebook'
   | 'gear'
   | 'grid'
+  | 'hash'
   | 'image'
+  | 'info'
   | 'layers'
   | 'lightbulb'
   | 'magicWand'
+  | 'megaphone'
   | 'menu'
   | 'microphone'
   | 'newspaper'
@@ -49,6 +54,7 @@ export type IconName =
   | 'star'
   | 'tag'
   | 'threads'
+  | 'type'
   | 'tiktok'
   | 'tv'
   | 'twitter'
@@ -80,6 +86,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
     </>
   ),
   bolt: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />,
+  briefcase: <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z" />,
   brush: <path d="M17.66 4L19 5.34l-12.02 12.02-2.62.34.34-2.62L17.66 4zM16 5.34L18.66 8" />,
   camera: (
     <>
@@ -89,6 +96,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
   ),
   check: <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />,
   checkCircle: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+  copy: <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />,
   chevronsLeft: <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5L7.5 12l3.75 7.5m3.75-7.5L11.25 12l3.75 7.5" />,
   chevronsRight: <path strokeLinecap="round" strokeLinejoin="round" d="M12.75 4.5L16.5 12l-3.75 7.5m-3.75-7.5L12.75 12l-3.75 7.5" />,
   chevronsUpDown: <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />,
@@ -117,6 +125,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
     </>
   ),
   grid: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 8.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 018.25 20.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6A2.25 2.25 0 0115.75 3.75h2.25A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25A2.25 2.25 0 0113.5 8.25V6zM13.5 15.75A2.25 2.25 0 0115.75 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />,
+  hash: <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5l-3.9 19.5m-2.1-19.5l-3.9 19.5" />,
   image: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -124,6 +133,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
       <polyline points="21 15 16 10 5 21"></polyline>
     </>
   ),
+  info: <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25L.75 21.75M.75 2.25L21.75 23.25m0-21l-21 21M12 9v3.75m9-9.75A9 9 0 1112 21.75 9 9 0 0121 12zM12 6.75h.008v.008H12V6.75z" />,
   layers: <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />,
   lightbulb: (
     <>
@@ -133,6 +143,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
     </>
   ),
   magicWand: <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.553L16.5 21.75l-.398-1.197a3.375 3.375 0 00-2.455-2.455L12.75 18l1.197-.398a3.375 3.375 0 002.455-2.455L16.5 14.25l.398 1.197a3.375 3.375 0 002.455 2.455L20.25 18l-1.197.398a3.375 3.375 0 00-2.455 2.455z" />,
+  megaphone: <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5L12 2.25L13.5 1.5L15 3.75L12 15.75L9 3.75L10.5 1.5ZM12 21V16.5M8.25 21H15.75" />,
   menu: <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />,
   microphone: <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 016 0v8.25a3 3 0 01-3 3z" />,
   newspaper: <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5M5.25 3h13.5A2.25 2.25 0 0121 5.25v13.5A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.75V5.25A2.25 2.25 0 015.25 3zM16.5 7.5h-9v9h9v-9z" />,
@@ -195,6 +206,7 @@ const ICON_MAP: Record<IconName, React.ReactNode> = {
       <line x1="12" y1="17" x2="12" y2="21" />
     </>
   ),
+  type: <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.45c.078-.29.44-.545.77-.545h.63c.26 0 .52.044.747.128.075.026.15.058.218.095l.07.05A6.75 6.75 0 019.75 15c0-1.44.563-2.755 1.481-3.722.063-.067.134-.127.202-.195a4.5 4.5 0 013.534 0c.068.068.139.128.202.195A6.75 6.75 0 0121.75 15c0-1.44-.563-2.755-1.481-3.722-.063-.067-.134-.127-.202-.195a4.5 4.5 0 00-3.534 0c-.068.068-.139.128-.202.195A6.75 6.75 0 0118.75 15H2.25c0-1.44.563-2.755 1.481-3.722.063-.067.134-.127.202-.195z" />,
   twitter: (
     <>
       <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" />

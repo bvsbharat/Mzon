@@ -11,15 +11,19 @@ import TrendingTopicsGrid from '../components/TrendingTopicsGrid';
 import SocialHooksList from '../components/SocialHooksList';
 import LiveNewsFeed from '../components/LiveNewsFeed';
 import ScheduleModal from '../components/ScheduleModal';
+import SocialContentPanel from '../components/SocialContentPanel';
 import { socialSchedulingService } from '../services/socialSchedulingService';
 
 interface NewsHubProps {
   onNavigate: (view: string) => void;
   onNewsSelected: (newsItem: NewsItem) => void;
   addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
+  galleryImages: any[];
+  onAddToLibrary: (imageUrl: string, name?: string) => void;
+  onAddResult?: (result: SocialContentResult) => void;
 }
 
-const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotification }) => {
+const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotification, galleryImages, onAddToLibrary, onAddResult }) => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [liveNews, setLiveNews] = useState<LiveNewsItem[]>([]);
   const [trendingTopics, setTrendingTopics] = useState<TrendingTopic[]>([]);
@@ -44,6 +48,8 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
   const [currentLimit, setCurrentLimit] = useState(5);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedNewsForScheduling, setSelectedNewsForScheduling] = useState<NewsItem | null>(null);
+  const [showSocialPanel, setShowSocialPanel] = useState(false);
+  const [selectedNewsForContent, setSelectedNewsForContent] = useState<NewsItem | null>(null);
   const [platformConfigs] = useState([
     { platform: 'twitter', color: '#1DA1F2', maxLength: 280 },
     { platform: 'linkedin', color: '#0077B5', maxLength: 3000 },
@@ -269,8 +275,17 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
     }
   };
 
-  const handleGenerateContent = (newsItem: NewsItem) => {
-    onNewsSelected(newsItem);
+  const handleCreateContent = (newsItem: NewsItem) => {
+    setSelectedNewsForContent(newsItem);
+    setShowSocialPanel(true);
+    if (addNotification) {
+      addNotification(`Selected "${newsItem.title}" for social content creation`, 'success');
+    }
+  };
+
+  const handleCloseSocialPanel = () => {
+    setShowSocialPanel(false);
+    setSelectedNewsForContent(null);
   };
 
   const handleReadArticle = (url: string) => {
@@ -476,7 +491,7 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
                     <NewsListItem
                       key={item.id}
                       newsItem={item}
-                      onGenerateContent={handleGenerateContent}
+                      onCreateContent={handleCreateContent}
                       onReadArticle={handleReadArticle}
                       onSchedulePost={handleSchedulePost}
                       onFetchContent={(newsItem, content) => {
@@ -526,7 +541,7 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
                   publishedAt: new Date().toISOString(),
                   url: '#',
                   tags: [topic.keyword],
-                  hashtags: [],
+                  hashtags: [`#${topic.keyword}`],
                   credibility: 80,
                   engagement: 85,
                   readingTime: 2,
@@ -537,7 +552,7 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
                   trendingPotential: 95,
                   sentiment: 'positive' as const
                 } as NewsItem;
-                onNewsSelected(mockNewsItem);
+                handleCreateContent(mockNewsItem);
               }}
             />
           </div>
@@ -577,7 +592,7 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
                   trendingPotential: hook.engagementPotential,
                   sentiment: 'positive' as const
                 } as NewsItem;
-                onNewsSelected(mockNewsItem);
+                handleCreateContent(mockNewsItem);
               }}
               onCopyContent={(content) => console.log('Content copied:', content)}
             />
@@ -610,6 +625,21 @@ const NewsHub: React.FC<NewsHubProps> = ({ onNavigate, onNewsSelected, addNotifi
           content_text: `${selectedNewsForScheduling.title}\n\n${selectedNewsForScheduling.description}\n\nRead more: ${selectedNewsForScheduling.url}`,
           hashtags: selectedNewsForScheduling.hashtags || []
         } : undefined}
+      />
+
+      {/* Social Content Panel */}
+      <SocialContentPanel
+        isOpen={showSocialPanel}
+        onClose={handleCloseSocialPanel}
+        selectedNews={selectedNewsForContent}
+        galleryImages={galleryImages}
+        onAddToLibrary={onAddToLibrary}
+        addNotification={(message, type) => {
+          if (addNotification) {
+            addNotification(message, type || 'info');
+          }
+        }}
+        onAddResult={onAddResult}
       />
     </div>
   );
