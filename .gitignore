@@ -37,3 +37,10 @@ backend/.env.production
 __pycache__/
 *.py[cod]
 *$py.class
+
+backend/.env
+backend/.env.local
+backend/.env.production
+backend/.env.staging
+
+.env
