@@ -12,6 +12,8 @@
     "@aws-sdk/client-s3": "^3.891.0",
     "@aws-sdk/lib-storage": "^3.891.0",
     "@aws-sdk/s3-request-presigner": "^3.891.0",
+    "@brightdata/mcp": "^2.5.0",
+    "@fal-ai/client": "^1.6.2",
     "@google/genai": "^1.15.0",
     "@paper-design/shaders-react": "^0.0.53",
     "@stytch/react": "^19.11.1",

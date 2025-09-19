@@ -1,4 +1,5 @@
 import { s3Service } from './s3Service';
+import { s3ProxyService } from './s3ProxyService';
 import { GalleryImage } from '../types';
 
 export interface StorageResult {
@@ -14,6 +15,13 @@ export interface ImageMetadata {
   customName?: string;
   userId?: string;
   imageType?: 'generated' | 'uploaded' | 'variation' | 'composed' | 'edited';
+  fileType?: 'image' | 'video'; // Added support for videos
+  videoMetadata?: {
+    duration?: string;
+    aspectRatio?: string;
+    platform?: string;
+    hasAudio?: boolean;
+  };
 }
 
 class StorageService {
@@ -36,7 +44,7 @@ class StorageService {
         const filename = this.generateFilename(metadata);
 
         console.log('StorageService: Uploading to S3', { folder, filename });
-        const s3Url = await s3Service.uploadImage(dataUrl, folder, filename);
+        const s3Url = await this.uploadImage(dataUrl, folder);
 
         console.log('StorageService: S3 upload successful', s3Url);
         return {
@@ -82,6 +90,52 @@ class StorageService {
   }
 
   /**
+   * Upload image to storage (S3 proxy or fallback to localStorage)
+   */
+  async uploadImage(dataUrl: string, folder: string = 'general'): Promise<StorageResult> {
+    // Try S3 proxy service first (bypasses CORS)
+    try {
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 15);
+      const filename = `mzon/${folder}/image-${timestamp}-${randomId}.png`;
+      
+      const result = await s3ProxyService.uploadImage(dataUrl, filename);
+      if (result.success) {
+        return {
+          url: result.url || dataUrl,
+          isS3: true
+        };
+      } else {
+        console.warn('S3 proxy upload failed:', result.error);
+      }
+    } catch (error) {
+      console.warn('S3 proxy upload error:', error);
+    }
+
+    // Fallback to localStorage (data URL storage)
+    try {
+      const timestamp = Date.now();
+      const imageId = `image_${timestamp}_${Math.random().toString(36).substring(2, 15)}`;
+      
+      // Store in localStorage
+      const { localStorageService } = await import('./localStorageService');
+      localStorageService.saveImage({
+        id: imageId,
+        url: dataUrl,
+        timestamp,
+        folder
+      });
+
+      return {
+        url: dataUrl,
+        isS3: false
+      };
+    } catch (error) {
+      throw new Error(`Failed to save image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Deletes an image from storage
    * @param imageUrl - The URL of the image to delete
    * @returns Promise<boolean> - Success status
@@ -100,6 +154,28 @@ class StorageService {
 
     // For data URLs, no deletion needed (they're just strings)
     return true;
+  }
+
+  /**
+   * Stores a video file using the same infrastructure as images
+   * @param dataUrl - The video data URL
+   * @param metadata - Video metadata including duration, aspect ratio, etc.
+   * @returns Promise<StorageResult> - Storage result with URL and method used
+   */
+  async storeVideo(dataUrl: string, metadata: ImageMetadata = {}): Promise<StorageResult> {
+    const videoMetadata: ImageMetadata = {
+      ...metadata,
+      fileType: 'video',
+      imageType: 'generated' // Videos are typically AI generated in this context
+    };
+
+    console.log('StorageService: Storing video', {
+      hasVideoMetadata: !!metadata.videoMetadata,
+      platform: metadata.videoMetadata?.platform,
+      duration: metadata.videoMetadata?.duration
+    });
+
+    return this.storeImage(dataUrl, videoMetadata);
   }
 
   /**
@@ -161,23 +237,37 @@ class StorageService {
 
   /**
    * Generates a filename based on metadata
-   * @param metadata - Image metadata
+   * @param metadata - Image/video metadata
    * @returns string - Generated filename
    */
   private generateFilename(metadata: ImageMetadata): string {
+    const isVideo = metadata.fileType === 'video';
+    const defaultExtension = isVideo ? '.mp4' : '.png';
+    const validExtensions = isVideo ? ['.mp4', '.webm', '.mov'] : ['.png', '.jpg', '.jpeg'];
+
     if (metadata.customName) {
-      // Ensure the custom name has a proper extension
-      return metadata.customName.endsWith('.png')
+      // Check if custom name already has a valid extension
+      const hasValidExtension = validExtensions.some(ext =>
+        metadata.customName!.toLowerCase().endsWith(ext)
+      );
+
+      return hasValidExtension
         ? metadata.customName
-        : `${metadata.customName}.png`;
+        : `${metadata.customName}${defaultExtension}`;
     }
 
     // Generate a descriptive filename
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    const type = metadata.imageType || 'image';
+    const type = metadata.imageType || (isVideo ? 'video' : 'image');
 
-    return `${type}_${timestamp}_${randomId}.png`;
+    // Include platform info for videos
+    let filePrefix = type;
+    if (isVideo && metadata.videoMetadata?.platform) {
+      filePrefix = `${type}_${metadata.videoMetadata.platform}`;
+    }
+
+    return `${filePrefix}_${timestamp}_${randomId}${defaultExtension}`;
   }
 
   /**
@@ -193,45 +283,30 @@ class StorageService {
   }
 
   /**
-   * Load gallery images from S3 with fallback to localStorage
+   * Load gallery images from S3 proxy with fallback to localStorage
    * @returns Promise<GalleryImage[]> - Gallery images
    */
   async loadGalleryImages(): Promise<GalleryImage[]> {
     console.log('StorageService: Loading gallery images...');
-    console.log('StorageService: S3 service available:', !!s3Service);
 
-    // Try S3 first if available
-    if (s3Service) {
-      try {
-        console.log('StorageService: Loading from S3...');
-        const s3Images = await s3Service.loadGalleryMetadata();
+    // Try S3 proxy service first (bypasses CORS)
+    try {
+      console.log('StorageService: Loading from S3 via proxy...');
+      const result = await s3ProxyService.downloadFile('mzon/gallery-metadata.json');
 
-        if (s3Images.length > 0) {
-          console.log(`StorageService: Successfully loaded ${s3Images.length} images from S3`);
-          return s3Images;
+      if (result.success && result.data) {
+        const metadata = result.data;
+        if (metadata.images && Array.isArray(metadata.images)) {
+          console.log(`StorageService: Successfully loaded ${metadata.images.length} images from S3 via proxy`);
+          return metadata.images;
         }
-
-        // If no images in S3 metadata, try to sync with actual S3 contents
-        console.log('StorageService: No S3 metadata found, syncing with S3 bucket contents...');
-        const syncedImages = await s3Service.syncGalleryWithS3([]);
-
-        if (syncedImages.length > 0) {
-          console.log(`StorageService: Found and synced ${syncedImages.length} images from S3 bucket`);
-          return syncedImages;
-        }
-
-        console.log('StorageService: No images found in S3 bucket');
-      } catch (error) {
-        console.warn('StorageService: S3 gallery loading failed, falling back to localStorage:', error);
+      } else if (result.error_code === 'NOT_FOUND') {
+        console.log('StorageService: No gallery metadata found in S3');
+      } else {
+        console.warn('StorageService: S3 proxy download failed:', result.error);
       }
-    } else {
-      console.log('StorageService: S3 service not available - checking environment variables...');
-      console.log('StorageService: Environment check:', {
-        hasRegion: !!import.meta.env.VITE_AWS_REGION,
-        hasAccessKey: !!import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-        hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
-        hasBucket: !!import.meta.env.VITE_AWS_S3_BUCKET
-      });
+    } catch (error) {
+      console.warn('StorageService: S3 proxy loading failed:', error);
     }
 
     // Fallback to localStorage
@@ -248,29 +323,40 @@ class StorageService {
   }
 
   /**
-   * Save gallery metadata to both S3 and localStorage
-   * @param galleryImages - Gallery images to save
+   * Save gallery metadata to storage
    */
-  async saveGalleryMetadata(galleryImages: GalleryImage[]): Promise<void> {
-    console.log('StorageService: Saving gallery metadata...', { count: galleryImages.length });
+  async saveGalleryMetadata(images: GalleryImage[]): Promise<StorageResult> {
+    const metadataKey = 'mzon/gallery-metadata.json';
+    const metadata = {
+      images,
+      lastUpdated: new Date().toISOString(),
+      version: '1.0'
+    };
 
-    // Save to S3 if available
-    if (s3Service) {
-      try {
-        await s3Service.saveGalleryMetadata(galleryImages);
-        console.log('StorageService: Gallery metadata saved to S3');
-      } catch (error) {
-        console.warn('StorageService: Failed to save gallery metadata to S3:', error);
+    // Try S3 proxy service first (bypasses CORS)
+    try {
+      const result = await s3ProxyService.uploadMetadata(metadata, metadataKey);
+      if (result.success) {
+        return {
+          url: result.url || `s3://${metadataKey}`,
+          isS3: true
+        };
+      } else {
+        console.warn('S3 proxy metadata save failed:', result.error);
       }
+    } catch (error) {
+      console.warn('S3 proxy metadata save error:', error);
     }
 
-    // Always save to localStorage as backup
+    // Fallback to localStorage
     try {
-      const { localStorageService } = await import('./localStorageService');
-      localStorageService.saveGalleryImages(galleryImages);
-      console.log('StorageService: Gallery metadata saved to localStorage');
+      localStorage.setItem('mzon-gallery-metadata', JSON.stringify(metadata));
+      return {
+        url: 'localStorage://mzon-gallery-metadata',
+        isS3: false
+      };
     } catch (error) {
-      console.warn('StorageService: Failed to save gallery metadata to localStorage:', error);
+      throw new Error(`Failed to save gallery metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -280,16 +366,58 @@ class StorageService {
    * @returns Promise<GalleryImage[]> - Synced gallery images
    */
   async syncGalleryWithS3(currentGalleryImages: GalleryImage[]): Promise<GalleryImage[]> {
-    if (!s3Service) {
-      console.log('StorageService: S3 not available for sync');
-      return currentGalleryImages;
-    }
-
     try {
-      console.log('StorageService: Syncing gallery with S3...');
-      const syncedImages = await s3Service.syncGalleryWithS3(currentGalleryImages);
+      console.log('StorageService: Syncing gallery with S3 via proxy...');
+      
+      // List files in S3 via proxy to discover existing images
+      const listResult = await s3ProxyService.listFiles('mzon/');
+      
+      if (!listResult.success) {
+        console.warn('StorageService: Failed to list S3 files via proxy:', listResult.error);
+        return currentGalleryImages;
+      }
+
+      const s3Files = listResult.files || [];
+      console.log(`StorageService: Found ${s3Files.length} files in S3`);
+
+      // Filter for image files and create gallery items
+      const imageFiles = s3Files.filter(file => 
+        file.key.match(/\.(png|jpg|jpeg|gif|webp)$/i) && 
+        !file.key.includes('metadata.json')
+      );
+
+      const syncedImages: GalleryImage[] = [...currentGalleryImages];
+
+      // Add any S3 images that aren't in current gallery
+      for (const file of imageFiles) {
+        const existingImage = syncedImages.find(img => 
+          img.url === file.url || img.url.includes(file.key)
+        );
+
+        if (!existingImage) {
+          const newImage: GalleryImage = {
+            id: file.key.split('/').pop() || `s3-${Date.now()}`,
+            url: file.url,
+            timestamp: new Date(file.last_modified).getTime(),
+            metadata: {
+              source: 's3-sync',
+              filename: file.key.split('/').pop() || 'unknown',
+              size: file.size,
+              lastModified: file.last_modified
+            }
+          };
+          syncedImages.push(newImage);
+        }
+      }
+
+      // Save updated metadata back to S3
+      if (syncedImages.length !== currentGalleryImages.length) {
+        await this.saveGalleryMetadata(syncedImages);
+      }
+
       console.log(`StorageService: Gallery sync completed - ${syncedImages.length} images`);
       return syncedImages;
+
     } catch (error) {
       console.error('StorageService: Gallery sync failed:', error);
       return currentGalleryImages;

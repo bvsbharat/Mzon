@@ -2,16 +2,17 @@ import { GoogleGenAI, Modality, GenerateContentResponse, Type } from "@google/ge
 import { generateDynamicPrompt, generateVariationPrompt, generateComposePrompt, generateMagicEditPrompt, SCENE_IDEAS_PROMPT, IMPROVE_PROMPT_PROMPT, COMPOSE_IDEAS_PROMPT, MAGIC_EDIT_MASKED_IDEAS_PROMPT, MAGIC_EDIT_IMPROVE_PROMPT_PROMPT, COMPOSE_IDEAS_WITH_CONTEXT_PROMPT, IMPROVE_COMPOSE_PROMPT_PROMPT, GENERATE_CAMPAIGN_PROMPTS_PROMPT, GENERATE_ADAPT_PROMPT_PROMPT, generateAdaptImagePrompt } from '../constants';
 import { ApiPart } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+// STRICT: Check for correct Gemini API key environment variable (via Vite define)
+if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY environment variable is not set. Cannot initialize AI services without API access.");
 }
 
-export type BackgroundConfig = 
-  { type: 'preset'; value: string; } | 
+export type BackgroundConfig =
+  { type: 'preset'; value: string; } |
   { type: 'ai'; value: string; } |
   { type: 'commercial'; value: string; };
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /**
  * Converts a data URL string to a GoogleGenerativeAI.Part object.
@@ -842,4 +843,303 @@ export const generatePlatformOptimizedNewsImages = async (
   });
 
   return images;
+};
+
+/**
+ * Generates email content using news context and brand information
+ * @param newsContext News content context from article or DeepAgent
+ * @param emailType Type of email to generate
+ * @param brandContext Brand configuration for consistent messaging
+ * @param recipientContext Target audience information
+ * @returns Generated email content
+ */
+export const generateEmailContent = async (
+  newsContext: string,
+  emailType: 'newsletter' | 'promotional' | 'transactional' | 'announcement',
+  brandContext?: {
+    brandName: string;
+    brandVoice: string;
+    brandDescription: string;
+    targetAudience: string;
+    keyMessages: string[];
+  },
+  recipientContext?: {
+    segmentName: string;
+    interests: string[];
+    previousEngagement: string;
+  }
+): Promise<{
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+  callToAction: { text: string; url: string };
+}> => {
+  let prompt = `Generate a professional ${emailType} email based on this news context:\n\n${newsContext}\n\n`;
+
+  // Add brand context
+  if (brandContext) {
+    prompt += `Brand Information:
+- Brand Name: ${brandContext.brandName}
+- Brand Voice: ${brandContext.brandVoice}
+- Brand Description: ${brandContext.brandDescription}
+- Target Audience: ${brandContext.targetAudience}
+- Key Messages: ${brandContext.keyMessages.join(', ')}
+
+`;
+  }
+
+  // Add recipient context
+  if (recipientContext) {
+    prompt += `Recipient Context:
+- Segment: ${recipientContext.segmentName}
+- Interests: ${recipientContext.interests.join(', ')}
+- Previous Engagement: ${recipientContext.previousEngagement}
+
+`;
+  }
+
+  // Email type specific instructions
+  const emailInstructions = {
+    newsletter: 'Create an informative newsletter email that updates subscribers on recent developments. Include multiple sections, relevant insights, and actionable takeaways.',
+    promotional: 'Create a compelling promotional email that drives action while providing value. Focus on benefits and include a strong call-to-action.',
+    transactional: 'Create a clear, concise transactional email that provides necessary information and maintains a professional tone.',
+    announcement: 'Create an engaging announcement email that generates excitement and clearly communicates the news.'
+  };
+
+  prompt += emailInstructions[emailType];
+
+  prompt += `
+
+Please provide the email content in JSON format with these fields:
+- subject: Compelling subject line (50-60 characters)
+- preheader: Preview text (90-130 characters)
+- bodyHtml: Full HTML email body with proper formatting, headings, and structure
+- bodyText: Plain text version of the email
+- callToAction: Object with 'text' and 'url' properties for the main CTA
+
+The email should be:
+- Mobile-responsive and well-formatted
+- Engaging and aligned with the brand voice
+- Include relevant news insights
+- Have a clear call-to-action
+- Be appropriate for the target audience`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          subject: { type: Type.STRING },
+          preheader: { type: Type.STRING },
+          bodyHtml: { type: Type.STRING },
+          bodyText: { type: Type.STRING },
+          callToAction: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING },
+              url: { type: Type.STRING }
+            },
+            required: ['text', 'url']
+          }
+        },
+        required: ['subject', 'preheader', 'bodyHtml', 'bodyText', 'callToAction']
+      }
+    }
+  });
+
+  try {
+    const jsonText = response.text.trim();
+    const parsed = JSON.parse(jsonText);
+    return parsed;
+  } catch (e) {
+    console.error("Failed to parse email content JSON:", e);
+    throw new Error("Could not generate email content. The AI returned an unexpected format.");
+  }
+};
+
+/**
+ * Generates multiple email variations for A/B testing
+ * @param newsContext News content context
+ * @param emailType Type of email
+ * @param brandContext Brand information
+ * @param variationCount Number of variations to generate
+ * @returns Array of email variations
+ */
+export const generateEmailVariations = async (
+  newsContext: string,
+  emailType: 'newsletter' | 'promotional' | 'transactional' | 'announcement',
+  brandContext?: {
+    brandName: string;
+    brandVoice: string;
+    brandDescription: string;
+    targetAudience: string;
+    keyMessages: string[];
+  },
+  variationCount: number = 3
+): Promise<Array<{
+  id: string;
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+  callToAction: { text: string; url: string };
+  variation: string;
+}>> => {
+  const variations = [];
+
+  const variationStyles = [
+    { name: 'Direct', description: 'Straightforward and to-the-point messaging' },
+    { name: 'Engaging', description: 'More conversational and engaging tone' },
+    { name: 'Professional', description: 'Formal and authoritative approach' },
+    { name: 'Story-driven', description: 'Narrative-focused with storytelling elements' },
+    { name: 'Data-focused', description: 'Emphasizes facts, numbers, and insights' }
+  ];
+
+  for (let i = 0; i < Math.min(variationCount, variationStyles.length); i++) {
+    const style = variationStyles[i];
+
+    try {
+      const basePrompt = `Generate a ${style.description} ${emailType} email based on this news context:\n\n${newsContext}\n\n`;
+
+      let prompt = basePrompt;
+
+      // Add brand context
+      if (brandContext) {
+        prompt += `Brand Information:
+- Brand Name: ${brandContext.brandName}
+- Brand Voice: ${brandContext.brandVoice} (adapted for ${style.name} style)
+- Brand Description: ${brandContext.brandDescription}
+- Target Audience: ${brandContext.targetAudience}
+- Key Messages: ${brandContext.keyMessages.join(', ')}
+
+`;
+      }
+
+      prompt += `Style: ${style.description}
+
+Create the email content in JSON format with subject, preheader, bodyHtml, bodyText, and callToAction fields.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              subject: { type: Type.STRING },
+              preheader: { type: Type.STRING },
+              bodyHtml: { type: Type.STRING },
+              bodyText: { type: Type.STRING },
+              callToAction: {
+                type: Type.OBJECT,
+                properties: {
+                  text: { type: Type.STRING },
+                  url: { type: Type.STRING }
+                },
+                required: ['text', 'url']
+              }
+            },
+            required: ['subject', 'preheader', 'bodyHtml', 'bodyText', 'callToAction']
+          }
+        }
+      });
+
+      const jsonText = response.text.trim();
+      const parsed = JSON.parse(jsonText);
+
+      variations.push({
+        id: `variation-${i + 1}`,
+        ...parsed,
+        variation: style.name
+      });
+    } catch (error) {
+      console.error(`Failed to generate ${style.name} email variation:`, error);
+    }
+  }
+
+  return variations;
+};
+
+/**
+ * Optimizes email subject lines for better open rates
+ * @param originalSubject Original subject line
+ * @param newsContext News content context
+ * @param brandContext Brand information
+ * @param targetMetrics Optimization goals
+ * @returns Array of optimized subject lines
+ */
+export const optimizeEmailSubjectLines = async (
+  originalSubject: string,
+  newsContext: string,
+  brandContext?: {
+    brandName: string;
+    brandVoice: string;
+    targetAudience: string;
+  },
+  targetMetrics?: {
+    prioritizeOpenRate: boolean;
+    prioritizeClickRate: boolean;
+    includePersonalization: boolean;
+    includeUrgency: boolean;
+    includeNumbers: boolean;
+  }
+): Promise<string[]> => {
+  let prompt = `Optimize this email subject line for better performance:\n\nOriginal: "${originalSubject}"\n\nNews Context: ${newsContext}\n\n`;
+
+  if (brandContext) {
+    prompt += `Brand Context:
+- Brand Name: ${brandContext.brandName}
+- Brand Voice: ${brandContext.brandVoice}
+- Target Audience: ${brandContext.targetAudience}\n\n`;
+  }
+
+  if (targetMetrics) {
+    prompt += `Optimization Goals:
+- Prioritize Open Rate: ${targetMetrics.prioritizeOpenRate}
+- Prioritize Click Rate: ${targetMetrics.prioritizeClickRate}
+- Include Personalization: ${targetMetrics.includePersonalization}
+- Include Urgency: ${targetMetrics.includeUrgency}
+- Include Numbers/Data: ${targetMetrics.includeNumbers}\n\n`;
+  }
+
+  prompt += `Generate 5 optimized subject line variations that:
+- Are 50-60 characters or less
+- Create curiosity and drive opens
+- Are relevant to the news content
+- Match the brand voice
+- Follow email marketing best practices
+
+Return as a JSON array of strings.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [{ text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          subjects: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        },
+        required: ['subjects']
+      }
+    }
+  });
+
+  try {
+    const jsonText = response.text.trim();
+    const parsed = JSON.parse(jsonText);
+    return parsed.subjects || [];
+  } catch (e) {
+    console.error("Failed to parse subject line optimizations:", e);
+    throw new Error("Could not optimize subject lines. The AI returned an unexpected format.");
+  }
 };

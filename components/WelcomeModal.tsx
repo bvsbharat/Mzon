@@ -1,6 +1,5 @@
-
-import React from 'react';
-import Icon from './Icon';
+import React from "react";
+import Icon from "./Icon";
 
 interface WelcomeModalProps {
   onStart: () => void;
@@ -19,10 +18,11 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ onStart, onSkip }) => {
           <Icon icon="rocket" className="w-8 h-8 text-gray-800" />
         </div>
         <h1 className="mt-6 text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
-          Welcome to Digital Studio!
+          Welcome to Mzon!
         </h1>
         <p className="mt-4 text-base text-gray-600 max-w-md mx-auto">
-          Turn your product photos into professional-grade assets in just a few clicks. Let's take a quick tour to see how it works.
+          Turn your product photos into professional-grade assets in just a few
+          clicks. Let's take a quick tour to see how it works.
         </p>
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button

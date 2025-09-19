@@ -190,13 +190,18 @@ export class LiveNewsService {
    */
   async checkBackendHealth(): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
       const response = await fetch(`${BACKEND_URL}/`, {
         method: 'GET',
-        timeout: 5000
-      } as RequestInit);
+        signal: controller.signal
+      });
 
+      clearTimeout(timeoutId);
       return response.ok;
-    } catch {
+    } catch (error) {
+      console.warn('Backend health check failed:', error);
       return false;
     }
   }

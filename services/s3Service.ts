@@ -208,6 +208,17 @@ class S3Service {
         return [];
       }
 
+      // Handle CORS errors gracefully
+      if (error.message?.includes('CORS') ||
+          error.message?.includes('Access-Control-Allow-Origin') ||
+          error.name === 'CredentialsError' ||
+          error.message?.includes('preflight')) {
+        console.warn('S3: CORS policy prevents direct browser access. Please configure CORS on your S3 bucket.');
+        console.log('S3: See s3-cors-policy.json in project root for the required CORS configuration.');
+        // Don't throw error, allow fallback to localStorage
+        return [];
+      }
+
       console.error('Failed to load gallery metadata from S3:', error);
       throw new Error(`Gallery metadata load failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

@@ -1,9 +1,7 @@
-
-
-import React, { useState, useRef, useEffect } from 'react';
-import { MenuIcon } from './icons/MenuIcon';
-import { UserCircleIcon } from './icons/UserCircleIcon';
-import Icon from './Icon';
+import React, { useState, useRef, useEffect } from "react";
+import { MenuIcon } from "./icons/MenuIcon";
+import { UserCircleIcon } from "./icons/UserCircleIcon";
+import Icon from "./Icon";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -20,8 +18,8 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, title }) => {
         setIsMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
@@ -33,35 +31,39 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, title }) => {
       >
         <MenuIcon className="h-6 w-6" />
       </button>
-      
+
       <div className="flex items-center gap-2">
-          <Icon icon="sparkles" className="w-6 h-6 text-gray-800" />
-          <h1 className="text-lg font-semibold tracking-tight text-gray-900">
-              Digital Studio
-          </h1>
+        <Icon icon="sparkles" className="w-6 h-6 text-gray-800" />
+        <h1 className="text-lg font-semibold tracking-tight text-gray-900">
+          Mzon
+        </h1>
       </div>
-      
+
       <div className="relative" ref={menuRef}>
         {isMenuOpen && (
-          <div 
-            className="absolute top-full right-0 mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10"
-          >
+          <div className="absolute top-full right-0 mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
             <div className="py-1">
-              <a href="#" className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">
+              <a
+                href="#"
+                className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100"
+              >
                 Account Settings
               </a>
-              <a href="#" className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100">
+              <a
+                href="#"
+                className="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100"
+              >
                 Sign Out
               </a>
             </div>
           </div>
         )}
-        <button 
+        <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="p-1 rounded-full text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           aria-label="Open user menu"
         >
-            <UserCircleIcon className="w-8 h-8" />
+          <UserCircleIcon className="w-8 h-8" />
         </button>
       </div>
     </header>

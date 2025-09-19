@@ -17,7 +17,7 @@ export type GalleryImage = {
 };
 
 // FIX: Moved View and ComposerGenContext types here from App.tsx to resolve circular dependencies.
-export type View = 'photo' | 'variation' | 'composer' | 'edit' | 'library' | 'imageGenerator' | 'campaign' | 'platform' | 'newsHub' | 'contentCreator';
+export type View = 'photo' | 'variation' | 'composer' | 'edit' | 'library' | 'imageGenerator' | 'campaign' | 'platform' | 'newsHub' | 'contentCreator' | 'socialScheduler';
 export type ComposerGenContext = { targetSlot: number } | null;
 
 // News and Content types
@@ -79,6 +79,24 @@ export interface NewsContentWorkflow {
     videos: string[];
     text: string;
     hashtags: string[];
+  };
+  // Article content fetching
+  articleContent?: {
+    content: string;
+    summary: string;
+    keyPoints: string[];
+    wordCount: number;
+    readingTime: number;
+    fetchedAt: string;
+    error?: string;
+  };
+  // Brand context for content generation
+  brandContext?: {
+    brandName: string;
+    brandVoice: string;
+    brandDescription: string;
+    targetAudience: string;
+    keyMessages: string[];
   };
   // Enhanced with agentic discovery
   discoverySession?: {
@@ -249,4 +267,171 @@ export interface NewsWebSocketMessage {
   sessionId: string;
   update?: AgentUpdate;
   message?: string;
+}
+
+// Brand Configuration Types
+export interface BrandConfiguration {
+  brandName: string;
+  brandVoice: 'professional' | 'casual' | 'friendly' | 'authoritative' | 'playful' | 'formal';
+  brandDescription: string;
+  targetAudience: string;
+  keyMessages: string[];
+  industry: string;
+  companySize: 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
+  contentStyle: 'informative' | 'entertaining' | 'inspiring' | 'educational' | 'promotional';
+  hashtagPreferences: string[];
+  avoidWords: string[];
+}
+
+// Generated Content Types
+export interface GeneratedContent {
+  id: string;
+  type: 'social_post' | 'email' | 'article' | 'campaign';
+  platform?: SocialPlatform;
+  content: string;
+  title?: string;
+  subject?: string; // For emails
+  hashtags: string[];
+  images: string[];
+  wordCount: number;
+  estimatedEngagement: number;
+  brandCompliance: number; // 0-100 how well it matches brand guidelines
+  generatedAt: string;
+  sourceNewsId?: string;
+  variations?: GeneratedContent[]; // Alternative versions
+}
+
+// Email Generation Types
+export interface EmailContent extends GeneratedContent {
+  type: 'email';
+  subject: string;
+  preheader: string;
+  bodyHtml: string;
+  bodyText: string;
+  emailType: 'newsletter' | 'promotional' | 'transactional' | 'announcement';
+  callToAction: {
+    text: string;
+    url: string;
+  };
+}
+
+// Video Generation Types
+export interface VideoContent extends GeneratedContent {
+  type: 'video';
+  videoUrl: string;
+  compositeImageUrl?: string;
+  duration: '8s';
+  aspectRatio: '16:9' | '9:16' | 'auto';
+  resolution: '720p' | '1080p';
+  hasAudio: boolean;
+  videoStyle: 'promotional' | 'news_update' | 'product_showcase' | 'story_format';
+  processingTime?: number;
+  fileSize?: number;
+  thumbnailUrl?: string;
+}
+
+export interface VideoGenerationRequest {
+  newsItem: NewsItem;
+  productImageUrl: string;
+  platform: SocialPlatform;
+  brandContext?: BrandConfiguration;
+  customPrompt?: string;
+  includeAudio?: boolean;
+  videoStyle?: VideoContent['videoStyle'];
+}
+
+export interface VideoGenerationResult {
+  success: boolean;
+  videoContent?: VideoContent;
+  compositeImageUrl?: string;
+  error?: string;
+  processingTimeMs?: number;
+  steps: {
+    compositeImageGeneration: { success: boolean; timeMs: number; error?: string };
+    videoGeneration: { success: boolean; timeMs: number; error?: string };
+  };
+}
+
+export interface CompositeImageRequest {
+  productImageUrl: string;
+  newsTitle: string;
+  newsDescription: string;
+  keyPoints?: string[];
+  brandContext?: {
+    brandName: string;
+    brandColors?: string[];
+    brandStyle?: string;
+  };
+}
+
+// Extended GeneratedContent type to include video
+export type ExtendedGeneratedContent = GeneratedContent | EmailContent | VideoContent;
+
+// Social Media Scheduling Types
+export interface ScheduledContent {
+  id: string;
+  content_id: string;
+  platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook';
+  content_type: 'post' | 'story' | 'video';
+  title?: string;
+  content_text: string;
+  media_urls: string[];
+  hashtags: string[];
+  scheduled_time: string;
+  created_at: string;
+  status: 'scheduled' | 'posted' | 'failed' | 'cancelled';
+  posted_at?: string;
+  engagement_data?: {
+    likes: number;
+    shares: number;
+    comments: number;
+  };
+  campaign_id?: string;
+  ai_generated: boolean;
+  source_news?: {
+    title: string;
+    url: string;
+  };
+  retry_count?: number;
+  last_error?: string;
+}
+
+export interface ScheduleContentRequest {
+  platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook';
+  content_type?: 'post' | 'story' | 'video';
+  title?: string;
+  content_text: string;
+  media_urls?: string[];
+  hashtags?: string[];
+  scheduled_time: string;
+  campaign_id?: string;
+  target_audience?: any;
+  ai_generated?: boolean;
+  source_news_id?: string;
+}
+
+export interface SocialPlatformConfig {
+  platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook';
+  maxLength: number;
+  supportsImages: boolean;
+  supportsHashtags: boolean;
+  hashtagLimit?: number;
+  icon: string;
+  color: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  date: string;
+  scheduled_content: ScheduledContent[];
+  total_posts: number;
+}
+
+export interface ContentGenerationSettings {
+  platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook';
+  tone: 'professional' | 'casual' | 'engaging' | 'informative';
+  includeHashtags: boolean;
+  includeEmojis: boolean;
+  includeCallToAction: boolean;
+  maxLength?: number;
 }

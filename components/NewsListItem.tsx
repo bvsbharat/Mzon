@@ -1,20 +1,27 @@
 import React, { useState } from 'react';
 import { NewsItem, NewsCategory, SocialPlatform } from '../types';
 import { formatNewsDate, getNewsCategories } from '../services/newsService';
+import { articleContentService, ArticleContent } from '../services/articleContentService';
 import Icon from './Icon';
 
 interface NewsListItemProps {
   newsItem: NewsItem;
   onGenerateContent: (newsItem: NewsItem) => void;
   onReadArticle: (url: string) => void;
+  onFetchContent?: (newsItem: NewsItem, content: ArticleContent) => void;
+  onSchedulePost?: (newsItem: NewsItem) => void;
 }
 
 const NewsListItem: React.FC<NewsListItemProps> = ({
   newsItem,
   onGenerateContent,
-  onReadArticle
+  onReadArticle,
+  onFetchContent,
+  onSchedulePost
 }) => {
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isFetchingContent, setIsFetchingContent] = useState(false);
+  const [fetchedContent, setFetchedContent] = useState<ArticleContent | null>(null);
   const categories = getNewsCategories();
 
   const getCategoryColor = (category: NewsCategory) => {
@@ -47,6 +54,44 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
     // In a real implementation, this would open the platform's sharing dialog
     console.log(`Sharing to ${platform}:`, newsItem.title);
     setShowShareMenu(false);
+  };
+
+  const handleFetchContent = async () => {
+    if (isFetchingContent || fetchedContent) return;
+
+    setIsFetchingContent(true);
+    try {
+      const content = await articleContentService.fetchArticleContent(newsItem, {
+        extractSocialHooks: true,
+        analyzeSentiment: true,
+        maxLength: 5000 // Limit content length for performance
+      });
+      setFetchedContent(content);
+
+      // Notify parent component
+      if (onFetchContent) {
+        onFetchContent(newsItem, content);
+      }
+    } catch (error) {
+      console.error('Failed to fetch article content:', error);
+    } finally {
+      setIsFetchingContent(false);
+    }
+  };
+
+  const handleGenerateWithContent = () => {
+    if (fetchedContent) {
+      // Create enhanced news item with content
+      const enhancedNewsItem = {
+        ...newsItem,
+        content: fetchedContent.content,
+        summary: fetchedContent.summary,
+        keyPoints: fetchedContent.keyPoints
+      };
+      onGenerateContent(enhancedNewsItem);
+    } else {
+      onGenerateContent(newsItem);
+    }
   };
 
   return (
@@ -128,14 +173,119 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
                 ))}
               </div>
 
+              {/* Fetched Content Preview */}
+              {fetchedContent && !fetchedContent.error && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon icon="checkCircle" className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800">Article Content Fetched</span>
+                    <span className="text-xs text-blue-600">
+                      {fetchedContent.wordCount} words • {fetchedContent.readingTime} min read
+                    </span>
+                    {fetchedContent.viralPotential && fetchedContent.viralPotential > 70 && (
+                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full font-medium">
+                        🔥 Viral Potential: {fetchedContent.viralPotential}%
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-blue-700 line-clamp-2 mb-2">
+                    {fetchedContent.summary}
+                  </p>
+
+                  {/* Key Points */}
+                  {fetchedContent.keyPoints.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-xs text-blue-700 font-medium mb-1 block">Key Points:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {fetchedContent.keyPoints.slice(0, 3).map((point, index) => (
+                          <span key={index} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                            {point.length > 30 ? point.substring(0, 30) + '...' : point}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Social Hooks */}
+                  {fetchedContent.socialHooks && fetchedContent.socialHooks.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-xs text-blue-700 font-medium mb-1 block">Social Hooks:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {fetchedContent.socialHooks.slice(0, 3).map((hook, index) => (
+                          <span key={index} className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                            📈 {hook.length > 25 ? hook.substring(0, 25) + '...' : hook}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Author and Tags */}
+                  <div className="flex items-center justify-between text-xs text-blue-600">
+                    <span>
+                      {fetchedContent.author && `By ${fetchedContent.author} • `}
+                      Extracted {new Date(fetchedContent.extractedAt).toLocaleTimeString()}
+                    </span>
+                    {fetchedContent.tags.length > 0 && (
+                      <div className="flex gap-1">
+                        {fetchedContent.tags.slice(0, 3).map((tag, index) => (
+                          <span key={index} className="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded text-xs">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {fetchedContent?.error && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Icon icon="alertTriangle" className="w-4 h-4 text-yellow-600" />
+                    <span className="text-sm text-yellow-800">
+                      Could not fetch full article content. Using available summary for content generation.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => onGenerateContent(newsItem)}
+                  onClick={handleGenerateWithContent}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                 >
                   <Icon icon="image" className="w-4 h-4" />
-                  Generate Content
+                  {fetchedContent ? 'Generate Content' : 'Generate Content'}
+                </button>
+
+                <button
+                  onClick={handleFetchContent}
+                  disabled={isFetchingContent || !!fetchedContent}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                    isFetchingContent || fetchedContent
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {isFetchingContent ? (
+                    <>
+                      <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                      Fetching...
+                    </>
+                  ) : fetchedContent ? (
+                    <>
+                      <Icon icon="checkCircle" className="w-4 h-4 text-green-600" />
+                      Content Fetched
+                    </>
+                  ) : (
+                    <>
+                      <Icon icon="download" className="w-4 h-4" />
+                      Fetch Article
+                    </>
+                  )}
                 </button>
 
                 <button
@@ -145,6 +295,17 @@ const NewsListItem: React.FC<NewsListItemProps> = ({
                   <Icon icon="arrowLeft" className="w-4 h-4 rotate-180" />
                   Read Article
                 </button>
+
+                {/* Schedule Post Button */}
+                {onSchedulePost && (
+                  <button
+                    onClick={() => onSchedulePost(newsItem)}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    <Icon icon="calendar" className="w-4 h-4" />
+                    Schedule Post
+                  </button>
+                )}
 
                 {/* Social Share */}
                 <div className="relative">

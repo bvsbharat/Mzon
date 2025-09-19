@@ -1,6 +1,5 @@
-
-import React from 'react';
-import Icon from './Icon';
+import React from "react";
+import Icon from "./Icon";
 
 interface CompletionModalProps {
   onClose: () => void;
@@ -21,7 +20,8 @@ const CompletionModal: React.FC<CompletionModalProps> = ({ onClose }) => {
           You're all set!
         </h1>
         <p className="mt-4 text-base text-gray-600 max-w-md mx-auto">
-          You've learned the basics of the Digital Studio. Now it's your turn to get creative. Happy generating!
+          You've learned the basics of the Mzon. Now it's your turn to get
+          creative. Happy generating!
         </p>
         <div className="mt-8">
           <button

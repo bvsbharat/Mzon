@@ -11,8 +11,9 @@ import ImageGenerator from './views/ImageGenerator';
 import CampaignStudio, { Creative } from './views/CampaignStudio';
 import PlatformStudio from './views/PlatformStudio';
 import NewsHub from './views/NewsHub';
-import ContentCreator from './views/ContentCreator';
+import ContentCreator from './views/ContentCreatorEnhanced';
 import VideoCreator from './components/VideoCreator';
+import SocialScheduler from './views/SocialScheduler';
 import ProtectedRoute from './components/ProtectedRoute';
 // FIX: Moved View and ComposerGenContext to types.ts to resolve a circular dependency.
 import { GalleryImage, View, ComposerGenContext, NewsContentWorkflow, NewsItem, MediaType } from './types';
@@ -34,6 +35,7 @@ const VIEW_TITLES: Record<View, string> = {
   platform: 'Platform Studio',
   newsHub: 'Latest News',
   contentCreator: 'Content Creator',
+  socialScheduler: 'Social Scheduler',
 };
 
 const App: React.FC = () => {
@@ -47,6 +49,7 @@ const App: React.FC = () => {
   const [credits, setCredits] = React.useState(100000);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
 
   // State for preserving studio results across navigation
   const [latestVariationUrl, setLatestVariationUrl] = React.useState<string | null>(null);
@@ -109,7 +112,10 @@ const App: React.FC = () => {
   }, [activeStudioImage]);
 
 
-  const addNotification = (message: string, type: 'success' | 'error' = 'success') => {
+  const addNotification = (message: string, type: 'success' | 'error' = 'success', silent: boolean = false) => {
+    // Skip notifications during initial load or if silent flag is set
+    if (isInitialLoad || silent) return;
+
     const id = crypto.randomUUID();
     setNotifications(prev => [...prev, { id, message, type }]);
   };
@@ -174,6 +180,9 @@ const App: React.FC = () => {
       } catch (error) {
         console.error('App: Failed to load gallery images:', error);
         addNotification('Failed to load images from storage', 'error');
+      } finally {
+        // Set initial load to false after first load attempt (successful or failed)
+        setTimeout(() => setIsInitialLoad(false), 1000);
       }
     };
 
@@ -553,6 +562,7 @@ const App: React.FC = () => {
           return <NewsHub
                     onNavigate={handleNavigate}
                     onNewsSelected={handleNewsSelected}
+                    addNotification={addNotification}
                   />;
       case 'contentCreator':
           // Show VideoCreator when in video content generation step
@@ -573,6 +583,11 @@ const App: React.FC = () => {
                     newsWorkflow={newsWorkflow}
                     onMediaTypeSelected={handleMediaTypeSelected}
                     onWorkflowReset={handleWorkflowReset}
+                  />;
+      case 'socialScheduler':
+          return <SocialScheduler
+                    onNavigate={handleNavigate}
+                    addNotification={addNotification}
                   />;
       default:
         return <PhotoStudio 
