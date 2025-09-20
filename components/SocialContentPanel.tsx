@@ -8,6 +8,7 @@ import { contentGenerationService } from '../services/contentGenerationService';
 import { falAiService } from '../services/falAiService';
 import { brandService } from '../services/brandService';
 import { composioService } from '../services/composioService';
+import { socialSchedulingService } from '../services/socialSchedulingService';
 import { PlatformMockup } from './PlatformMockups';
 
 interface SocialContentPanelProps {
@@ -360,35 +361,58 @@ const SocialContentPanel: React.FC<SocialContentPanelProps> = ({
     content: GeneratedContent | VideoContent,
     platform: PublishPlatform
   ) => {
-    if (!composioService.isAvailable()) {
-      addNotification('Publishing service not available. Please check your Composio configuration.', 'error');
-      return;
-    }
-
     const contentId = `${content.id}_${platform}`;
     setIsPublishing(prev => new Map(prev.set(contentId, true)));
 
     try {
-      // Prepare publish options
-      const publishOptions: PublishOptions = {
-        platform,
-        content: content.content,
-        title: content.title || selectedNews?.title,
-        hashtags: content.hashtags || [],
-        images: content.images || []
-      };
+      // Use Airia agent for LinkedIn posting, Composio for others
+      if (platform === 'linkedin') {
+        let postContent = content.content;
+        
+        // For video content, include video URL
+        if ('videoUrl' in content) {
+          postContent += `\n\nWatch the full video: ${content.videoUrl}`;
+        }
 
-      // For video content, include video URL
-      if ('videoUrl' in content) {
-        publishOptions.content += `\n\nWatch the full video: ${content.videoUrl}`;
-      }
+        const result = await socialSchedulingService.postImmediately(
+          'linkedin',
+          postContent,
+          content.hashtags || [],
+          content.images || []
+        );
 
-      const result = await composioService.publishContent(publishOptions);
-
-      if (result.success) {
-        addNotification(`Successfully published to ${platform}!`, 'success');
+        if (result.success) {
+          addNotification(`Successfully published to LinkedIn via Airia agent!`, 'success');
+        } else {
+          addNotification(`Failed to publish to LinkedIn: ${result.error}`, 'error');
+        }
       } else {
-        addNotification(`Failed to publish to ${platform}: ${result.error}`, 'error');
+        // Use Composio for other platforms (email, etc.)
+        if (!composioService.isAvailable()) {
+          addNotification('Publishing service not available. Please check your Composio configuration.', 'error');
+          return;
+        }
+
+        const publishOptions: PublishOptions = {
+          platform,
+          content: content.content,
+          title: content.title || selectedNews?.title,
+          hashtags: content.hashtags || [],
+          images: content.images || []
+        };
+
+        // For video content, include video URL
+        if ('videoUrl' in content) {
+          publishOptions.content += `\n\nWatch the full video: ${content.videoUrl}`;
+        }
+
+        const result = await composioService.publishContent(publishOptions);
+
+        if (result.success) {
+          addNotification(`Successfully published to ${platform}!`, 'success');
+        } else {
+          addNotification(`Failed to publish to ${platform}: ${result.error}`, 'error');
+        }
       }
 
     } catch (error) {
@@ -701,24 +725,28 @@ const SocialContentPanel: React.FC<SocialContentPanelProps> = ({
                           </button>
 
                           {/* Publishing buttons */}
-                          {composioService.isAvailable() && (
-                            <>
-                              <button
-                                onClick={() => handlePublishContent(content, 'linkedin')}
-                                disabled={isPublishing.get(`${content.id}_linkedin`)}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                                  isPublishing.get(`${content.id}_linkedin`)
-                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                }`}
-                              >
-                                {isPublishing.get(`${content.id}_linkedin`) ? (
-                                  <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                                ) : (
-                                  <Icon icon="briefcase" className="w-4 h-4" />
-                                )}
-                                LinkedIn
-                              </button>
+                          <div className="flex gap-2">
+                            {/* LinkedIn posting via Airia agent */}
+                            <button
+                              onClick={() => handlePublishContent(content, 'linkedin')}
+                              disabled={isPublishing.get(`${content.id}_linkedin`)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                                isPublishing.get(`${content.id}_linkedin`)
+                                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                              }`}
+                              title="Post to LinkedIn via Airia AI Agent"
+                            >
+                              {isPublishing.get(`${content.id}_linkedin`) ? (
+                                <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                              ) : (
+                                <Icon icon="briefcase" className="w-4 h-4" />
+                              )}
+                              LinkedIn (AI)
+                            </button>
+
+                            {/* Other platforms via Composio */}
+                            {composioService.isAvailable() && (
                               <button
                                 onClick={() => handlePublishContent(content, 'email')}
                                 disabled={isPublishing.get(`${content.id}_email`)}
@@ -735,8 +763,8 @@ const SocialContentPanel: React.FC<SocialContentPanelProps> = ({
                                 )}
                                 Email
                               </button>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </div>
 
                         <div className="bg-gray-50 rounded-lg p-4 mb-4">
