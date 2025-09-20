@@ -17,6 +17,7 @@ Mzon is an innovative AI-powered content creation platform that combines real-ti
 - **🔐 Secure Authentication**: Passwordless auth with Stytch integration
 - **☁️ Cloud Storage**: S3 integration with secure proxy service
 - **🎙️ Voice Integration**: Voice-to-content conversion with Gladia.io
+- **🤖 AI Agent Integration**: Airia AI agent for automated social media posting
 - **📊 Campaign Management**: Comprehensive campaign studio for multi-platform management
 - **🎨 Asset Library**: Centralized asset management with cloud storage
 
@@ -37,6 +38,7 @@ Mzon is an innovative AI-powered content creation platform that combines real-ti
 ### External Services
 - **[Stytch](https://stytch.com/)** - Authentication
 - **[Gladia.io](https://www.gladia.io)** - Voice processing
+- **[Airia.ai](https://airia.ai/)** - AI agent for social media posting
 - **[Qodo.ai](https://www.qodo.ai/)** - Code intelligence
 - **[TigerData](https://www.tigerdata.com/)** & **[Redis](https://redis.io/)** - Data storage
 - **[Apify](https://console.apify.com/)** - Web crawling
@@ -62,6 +64,10 @@ Mzon is an innovative AI-powered content creation platform that combines real-ti
    ```env
    GEMINI_API_KEY=your_gemini_api_key
    VITE_API_BASE_URL=http://localhost:8000
+   
+   # Airia AI Agent (for social media posting)
+   VITE_AIRIA_API_KEY=your_airia_api_key
+   VITE_AIRIA_USER_ID=your_airia_user_id
    ```
 
 3. **Start development server:**
@@ -128,6 +134,35 @@ The application uses S3 for asset storage with a proxy service to handle CORS is
 
 ### Authentication
 Authentication is handled through Stytch. See [README-AUTH.md](README-AUTH.md) for authentication setup details.
+
+### Airia AI Agent Setup
+The Airia AI agent enables automatic social media posting when users select "Post Now" or schedule immediate posts.
+
+**Configuration Steps:**
+1. Obtain your Airia API credentials from [Airia.ai](https://airia.ai/)
+2. Add the following to your `.env.local` file:
+   ```env
+   VITE_AIRIA_API_KEY=your_airia_api_key
+   VITE_AIRIA_USER_ID=your_airia_user_id
+   ```
+3. Restart your development server
+4. The system will automatically use the Airia agent for:
+   - Immediate posts (Post Now button)
+   - Scheduled posts within 5 minutes
+   - Quick posting from news items
+
+**API Integration:**
+The integration uses the Airia Pipeline Execution API:
+```bash
+curl --location "https://api.airia.ai/v2/PipelineExecution/4c574c43-a615-4c06-890b-b7179511223e" \
+--header "X-API-KEY: $AIRIA_API_KEY" \
+--header "Content-Type: application/json" \
+--data "{
+    \"userId\": \"$AIRIA_USER_ID\",
+    \"userInput\": \"Post to PLATFORM: Content with hashtags and media\",
+    \"asyncOutput\": false
+}"
+```
 
 ### News Intelligence
 Real-time news data is provided by Bright Data. The service automatically falls back to demo mode if API credentials are not configured.

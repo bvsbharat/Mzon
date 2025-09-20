@@ -1,4 +1,5 @@
 import { NewsItem } from '../types';
+import { airiaService, SocialMediaPostRequest } from './airiaService';
 
 // Social Media Scheduling Types
 export interface ScheduledContent {
@@ -63,17 +64,25 @@ class SocialSchedulingService {
   }
 
   /**
-   * Schedule social media content
+   * Schedule social media content with Airia AI agent integration
    */
   async scheduleContent(contentData: ScheduleContentRequest): Promise<{ content_id: string; scheduled_time: string }> {
     try {
+      const content_id = crypto.randomUUID();
+
+      // If Airia is configured and this is for immediate posting, use Airia agent
+      if (airiaService.isConfigured() && this.shouldUseAiriaAgent(contentData)) {
+        await this.postWithAiriaAgent(contentData);
+      }
+
+      // Always store in our scheduling system for tracking
       const response = await fetch(`${this.baseUrl}/api/social/schedule`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content_id: crypto.randomUUID(),
+          content_id,
           ...contentData
         })
       });
@@ -96,6 +105,52 @@ class SocialSchedulingService {
       console.error('Error scheduling content:', error);
       throw error;
     }
+  }
+
+  /**
+   * Post content immediately using Airia AI agent
+   */
+  async postWithAiriaAgent(contentData: ScheduleContentRequest): Promise<boolean> {
+    try {
+      const postRequest: SocialMediaPostRequest = {
+        platform: contentData.platform,
+        content: contentData.content_text,
+        mediaUrls: contentData.media_urls,
+        hashtags: contentData.hashtags,
+        scheduledTime: contentData.scheduled_time,
+        targetAudience: contentData.target_audience?.description || undefined
+      };
+
+      const result = await airiaService.executeSocialMediaPost(postRequest);
+
+      if (!result.success) {
+        console.error('Airia agent posting failed:', result.error);
+        return false;
+      }
+
+      console.log('Successfully posted via Airia agent:', result.data);
+      return true;
+    } catch (error) {
+      console.error('Error posting with Airia agent:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Determine if we should use Airia agent for posting
+   */
+  private shouldUseAiriaAgent(contentData: ScheduleContentRequest): boolean {
+    // Use Airia for immediate posts (within next 5 minutes) or if no scheduled time
+    if (!contentData.scheduled_time) {
+      return true;
+    }
+
+    const scheduledTime = new Date(contentData.scheduled_time);
+    const now = new Date();
+    const timeDiff = scheduledTime.getTime() - now.getTime();
+    const fiveMinutes = 5 * 60 * 1000;
+
+    return timeDiff <= fiveMinutes;
   }
 
   /**
@@ -265,6 +320,63 @@ class SocialSchedulingService {
   }
 
   /**
+   * Post content immediately using Airia agent (bypassing scheduling)
+   */
+  async postImmediately(
+    platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook',
+    content: string,
+    hashtags?: string[],
+    mediaUrls?: string[]
+  ): Promise<{ success: boolean; content_id: string; error?: string }> {
+    const content_id = crypto.randomUUID();
+
+    try {
+      if (!airiaService.isConfigured()) {
+        throw new Error('Airia service is not configured. Please set VITE_AIRIA_API_KEY and VITE_AIRIA_USER_ID environment variables.');
+      }
+
+      const postRequest: SocialMediaPostRequest = {
+        platform,
+        content,
+        hashtags,
+        mediaUrls
+      };
+
+      const result = await airiaService.executeSocialMediaPost(postRequest);
+
+      if (!result.success) {
+        return {
+          success: false,
+          content_id,
+          error: result.error || 'Failed to post via Airia agent'
+        };
+      }
+
+      // Log the successful post in our system
+      await this.scheduleContent({
+        platform,
+        content_text: content,
+        hashtags,
+        media_urls: mediaUrls || [],
+        scheduled_time: new Date().toISOString(),
+        ai_generated: true
+      });
+
+      return {
+        success: true,
+        content_id
+      };
+    } catch (error) {
+      console.error('Error posting immediately:', error);
+      return {
+        success: false,
+        content_id,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
    * Quick schedule from news item
    */
   async quickScheduleFromNews(
@@ -304,6 +416,42 @@ class SocialSchedulingService {
     });
 
     return result.content_id;
+  }
+
+  /**
+   * Quick post from news item using Airia agent
+   */
+  async quickPostFromNews(
+    newsItem: NewsItem,
+    platform: 'twitter' | 'linkedin' | 'instagram' | 'facebook'
+  ): Promise<{ success: boolean; content_id: string; error?: string }> {
+    let content = '';
+    const hashtags: string[] = newsItem.hashtags || [];
+
+    // Generate platform-specific content
+    switch (platform) {
+      case 'twitter':
+        content = `🚀 ${newsItem.title}\n\n${newsItem.description.substring(0, 120)}...\n\n#News #${newsItem.category}`;
+        hashtags.push('News', newsItem.category);
+        break;
+      case 'linkedin':
+        content = `📰 Industry Update: ${newsItem.title}\n\n${newsItem.description}\n\nThoughts? 💭\n\n#Industry #Business #${newsItem.category}`;
+        hashtags.push('Industry', 'Business', newsItem.category);
+        break;
+      case 'instagram':
+        content = `📊 ${newsItem.title}\n.\n.\n.\n#news #trending #${newsItem.category}`;
+        hashtags.push('news', 'trending', newsItem.category);
+        break;
+      case 'facebook':
+        content = `${newsItem.title}\n\n${newsItem.description}\n\nRead more: ${newsItem.url}`;
+        break;
+    }
+
+    return await this.postImmediately(
+      platform,
+      content,
+      hashtags.slice(0, 10) // Limit hashtags
+    );
   }
 
   /**
